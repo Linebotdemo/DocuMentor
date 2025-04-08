@@ -874,7 +874,7 @@ def upload_video():
 
         generation_mode = request.form.get("generation_mode", "manual")
 
-        # 1) Cloudinaryへアップロード（try内に入れる）
+        # 1) Cloudinaryへアップロード（try ブロック内に入れる）
         try:
             video_url = upload_to_cloudinary(
                 file,
@@ -886,12 +886,46 @@ def upload_video():
             print(f"[ERROR] Cloudinaryアップロード失敗: {str(e)}")
             return jsonify({"error": "Cloudinaryへの動画アップロード中に例外が発生しました"}), 500
 
-        # 仮のreturn（ここで止めてログだけ見たいとき用）
-        return jsonify({"message": "アップロード成功", "url": video_url})
+        # ★ 仮のreturn（デバッグ用の早期 return）は削除する
+        # return jsonify({"message": "アップロード成功", "url": video_url})
 
-    except Exception as e:
-        print(f"[ERROR] 全体例外: {str(e)}")
-        return jsonify({"error": f"動画アップロード中にエラーが発生しました: {str(e)}"}), 500
+        # 2) Videoレコード登録
+        video = Video(
+            title=title,
+            cloudinary_url=video_url,
+            user_id=user_id,
+            company_id=g.current_user.company_id
+        )
+        db.session.add(video)
+        db.session.commit()
+
+        # 3) 画像ファイルがあればOCR処理（略）
+
+        # 4) Whisper解析＋クイズ生成処理（略）
+        try:
+            print("[DEBUG] before calling .delay()")
+            transcribe_video_task.delay(video.cloudinary_url, video.id)
+            print("[DEBUG] after calling .delay()")
+        except Exception as e:
+            print(f"非同期タスク送信失敗: {str(e)}")
+
+        # 5) クイズテキストの取得（略）
+        quiz_obj = Quiz.query.filter_by(video_id=video.id).first()
+        quiz_text = quiz_obj.auto_quiz_text if quiz_obj else ""
+
+        result = {
+            "summary_text": video.summary_text,
+            "quiz_text": quiz_text
+        }
+        return jsonify({
+            "message": "動画アップロード＆処理完了",
+            "video_id": video.id,
+            "result": result
+        })
+
+    except Exception as ex:
+        print("動画アップロード時エラー:", ex)
+        return jsonify({"error": f"動画アップロードに失敗しました: {str(ex)}"}), 500
 
         # 2) Videoレコード登録
         video = Video(

@@ -961,7 +961,7 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
       });
 
       // 動画アップロード フォームsubmit
-      $("#video-upload-form").on("submit", function(e){
+     $("#video-upload-form").on("submit", function(e){
         e.preventDefault();
         const formData = new FormData(this);
         formData.append("generation_mode", currentGenerationMode);
@@ -971,32 +971,37 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
           formData.append("image_files", blob, "capture_" + idx + ".jpg");
         });
 
-        $.ajax({
-          url: "/videos/upload",
-          type: "POST",
-          headers: { "Authorization": "Bearer " + jwtToken },
-          data: formData,
-          processData: false,
-          contentType: false,
-          timeout: 180000,
-          success: function(data){
-            if(data.error){
-              $("#upload-result").text(data.error);
-            } else {
-              $("#upload-result").text("動画アップロード完了！ 解析を開始しています...");
+$.ajax({
+  url: "/videos/upload",
+  type: "POST",
+  headers: { "Authorization": "Bearer " + jwtToken },
+  data: formData,
+  processData: false,
+  contentType: false,
+  timeout: 180000,
+  success: function(data){
+      console.log("アップロードレスポンス:", data); // レスポンス全体を確認
+      if(data.error){
+          $("#upload-result").text(data.error);
+      } else {
+          $("#upload-result").text("動画アップロード完了！ 解析を開始しています...");
+          // ここで必ず video_id が存在することを確認
+          if(data.video_id) {
               pollVideoStatus(data.video_id);
-              $("#generation-results").removeClass("hidden");
-              $("#generated-content").val(
-                "要約: " + data.result.summary_text + "\n\nクイズ: " + data.result.quiz_text
-              );
-            }
-          },
-          error: function(xhr){
-            console.error("動画アップロードエラー:", xhr);
-            $("#upload-result").text("動画アップロードに失敗しました");
+          } else {
+              console.error("video_id がレスポンスに存在しません。");
           }
-        });
-      });
+          $("#generation-results").removeClass("hidden");
+          $("#generated-content").val(
+              "要約: " + data.result.summary_text + "\n\nクイズ: " + data.result.quiz_text
+          );
+      }
+  },
+  error: function(xhr){
+      console.error("動画アップロードエラー:", xhr);
+      $("#upload-result").text("動画アップロードに失敗しました");
+  }
+});
 
       // ----------------------------------------------------------------------
       // 生成内容テキストにドラッグ&ドロップ: 画像をBase64埋め込み
