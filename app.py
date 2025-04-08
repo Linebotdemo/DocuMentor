@@ -875,14 +875,25 @@ def upload_video():
         generation_mode = request.form.get("generation_mode", "manual")
 
         # 1) Cloudinaryへアップ
-        video_url = upload_to_cloudinary(
-            file,
-            resource_type="video",
-            folder="documentor/videos"
-        )
-        print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
-    if not video_url:
-            return jsonify({"error": "Cloudinaryへの動画アップロードに失敗"}), 500
+        try:
+            video_url = upload_to_cloudinary(
+                file,
+                resource_type="video",
+                folder="documentor/videos"
+            )
+            print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
+            if not video_url:
+                return jsonify({"error": "Cloudinaryへの動画アップロードに失敗"}), 500
+        except Exception as e:
+            print(f"[ERROR] Cloudinaryアップロード例外: {str(e)}")
+            return jsonify({"error": f"Cloudinaryアップロード中にエラー: {str(e)}"}), 500
+
+        # ここから先も処理が続くならそのまま書いてOK！
+
+    except Exception as ex:
+        print("動画アップロード時エラー:", ex)
+        return jsonify({"error": f"動画アップロードに失敗しました: {str(ex)}"}), 500
+
 
         # 2) Videoレコード登録
         video = Video(
