@@ -876,6 +876,7 @@ def upload_video():
 
         # 1) Cloudinaryへアップ
         video_url = upload_to_cloudinary(
+	print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
             file,
             resource_type="video",
             folder="documentor/videos"
@@ -920,9 +921,9 @@ def upload_video():
 
         # 4) Whisper解析＋クイズ生成
         try:
-            print(f"[DEBUG] Calling delay for video_id={video.id}")
+            print("[DEBUG] before calling .delay()")
             transcribe_video_task.delay(video.cloudinary_url, video.id)
-            print("タスク送信したよ")
+            print("[DEBUG] after calling .delay()")
         except Exception as e:
             print(f"非同期タスク送信失敗: {str(e)}")
 
