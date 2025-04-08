@@ -876,11 +876,11 @@ def upload_video():
 
         # 1) Cloudinaryへアップ
         video_url = upload_to_cloudinary(
-	print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
             file,
             resource_type="video",
             folder="documentor/videos"
         )
+	print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
         if not video_url:
             return jsonify({"error": "Cloudinaryへの動画アップロードに失敗"}), 500
 
