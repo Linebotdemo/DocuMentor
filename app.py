@@ -880,8 +880,8 @@ def upload_video():
             resource_type="video",
             folder="documentor/videos"
         )
-	print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
-        if not video_url:
+        print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
+	if not video_url:
             return jsonify({"error": "Cloudinaryへの動画アップロードに失敗"}), 500
 
         # 2) Videoレコード登録
