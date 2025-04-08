@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: docu-mentor
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn app:app --bind 0.0.0.0:10000
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        value: your-secret-key
+      - key: JWT_SECRET_KEY
+        value: your-jwt-secret
+      - key: SQLALCHEMY_DATABASE_URI
+        value: postgres://USER:PASSWORD@HOST:PORT/DB
+      - key: CLOUDINARY_CLOUD_NAME
+        value: your_cloud_name
+      - key: CLOUDINARY_API_KEY
+        value: your_api_key
+      - key: CLOUDINARY_API_SECRET
+        value: your_api_secret
+      - key: OPENAI_API_KEY
+        value: your_openai_key
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        value: your_line_token
+      - key: LINE_CHANNEL_SECRET
+        value: your_line_secret
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: admin123
+    plan: free

@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>DocuMentor ダッシュボード</title>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8f9fa; }
+    .hidden { display: none; }
+    /* ログイン画面 */
+    #login-section {
+      max-width: 400px; margin: 100px auto;
+      background: #fff; padding: 20px;
+      border-radius: 6px; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    /* サイドバー */
+    #env-sidebar, #user-sidebar {
+      width: 220px; position: fixed; top: 0; left: 0; height: 100vh;
+      background-color: #343a40; color: #fff; padding-top: 20px; overflow-y: auto;
+    }
+    #env-sidebar a, #user-sidebar a {
+      display: block; padding: 10px 15px; color: #fff;
+      text-decoration: none; cursor: pointer;
+    }
+    #env-sidebar a:hover, #user-sidebar a:hover { background-color: #495057; }
+    /* メインコンテンツ */
+    #env-main-content, #user-main-content { margin-left: 240px; padding: 20px; }
+    .section { margin-bottom: 30px; }
+    .table th, .table td { vertical-align: middle; }
+    #video-preview { width: 100%; max-height: 400px; margin-bottom: 10px; }
+    #captured-frames .capture-item { position: relative; display: inline-block; margin: 5px; }
+    #captured-frames .capture-item img { max-width: 200px; max-height: 150px; }
+    #captured-frames .delete-capture {
+      position: absolute; top: 0; right: 0;
+      background: rgba(255, 0, 0, 0.7); color: #fff;
+      border: none; cursor: pointer; padding: 2px 5px;
+    }
+    #captured-frames {
+      border: 2px dashed #ccc;
+      padding: 10px;
+      min-height: 100px;
+    }
+    /* 生成内容にドラッグ&ドロップしたら画像をBase64埋め込みする */
+    #generated-content {
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <!-- ログイン画面 -->
+  <div id="login-section">
+    <h2 class="text-center">ログイン</h2>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-username">ユーザー名または企業コード</label>
+        <input type="text" class="form-control" id="login-username" required>
+      </div>
+      <div class="form-group">
+        <label for="login-password">パスワード</label>
+        <input type="password" class="form-control" id="login-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">ログイン</button>
+    </form>
+    <div id="login-result" class="mt-3 text-danger text-center"></div>
+  </div>
+
+  <!-- ENVユーザー用ダッシュボード -->
+  <div id="env-app-section" class="hidden">
+    <div id="env-sidebar">
+      <h4 class="text-center">ENVメニュー</h4>
+      <a id="nav-company-management">企業管理</a>
+      <!-- 通知一覧ボタンを削除 -->
+      <!-- <a id="nav-notifications">通知一覧</a> -->
+      <a id="env-logout">ログアウト</a>
+    </div>
+    <div id="env-main-content">
+      <div id="section-company-management" class="section">
+        <h2>企業管理</h2>
+        <div id="company-add-section" class="mb-4">
+          <h4>新規企業追加</h4>
+          <form id="company-add-form">
+            <div class="form-group">
+              <label for="company-name">企業名</label>
+              <input type="text" class="form-control" id="company-name" required>
+            </div>
+            <button type="submit" class="btn btn-primary">企業を追加</button>
+          </form>
+        </div>
+        <div id="company-list-section">
+          <h4>登録済み企業一覧</h4>
+          <button id="load-companies-btn" class="btn btn-secondary mb-2">企業一覧を読み込み</button>
+          <table class="table table-bordered" id="company-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>企業名</th>
+                <th>企業コード</th>
+                <th>登録日時</th>
+                <th>サブスクリプション終了日</th>
+                <th>操作</th> <!-- 操作カラムを追加 -->
+              </tr>
+            </thead>
+            <tbody id="company-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ENVユーザー向け通知一覧セクション -->
+      <!-- ここは表示・非表示を切り替え可能。サイドバーからは削除したが、ページ自体は残す -->
+      <div id="section-notifications" class="section hidden">
+        <h3>通知一覧</h3>
+        <button id="load-notifications-btn" class="btn btn-secondary mb-2">通知を読み込み</button>
+        <div class="mb-3">
+          <h4>自分宛の通知</h4>
+          <table class="table table-bordered" id="notifications-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>メッセージ</th>
+                <th>日時</th>
+                <th>既読状態</th>
+              </tr>
+            </thead>
+            <tbody id="notifications-table-body"></tbody>
+          </table>
+        </div>
+        <div>
+          <h4>検索ログ</h4>
+          <table class="table table-bordered" id="search-logs-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>ユーザー名</th>
+                <th>検索キーワード</th>
+                <th>ヒット件数</th>
+                <th>検索日時</th>
+              </tr>
+            </thead>
+            <tbody id="search-logs-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一般ユーザー用ダッシュボード -->
+  <div id="user-app-section" class="hidden">
+    <div id="user-sidebar">
+      <h4 class="text-center">ユーザーメニュー</h4>
+      <!-- ★ 企業名(企業コード)を表示する領域を追加 -->
+      <div id="user-company-info" class="text-center mb-2"></div>
+
+      <a id="nav-user-upload">動画アップロード</a>
+      <a id="nav-line-users">LINEユーザー管理</a>
+      <a id="nav-documents">PDF管理</a>
+      <!-- 通知一覧ボタンを削除 -->
+      <!-- <a id="nav-notifications-user">通知一覧</a> -->
+      <a id="nav-search">PDF検索</a>
+      <a id="nav-account">アカウント管理</a>
+      <a id="user-logout">ログアウト</a>
+    </div>
+    <div id="user-main-content">
+      <!-- 動画アップロードセクション -->
+      <div id="section-upload" class="section">
+        <h3>動画アップロード</h3>
+        <form id="video-upload-form" enctype="multipart/form-data">
+          <div class="form-group">
+            <label>生成モード選択</label>
+            <div>
+              <label class="radio-inline"><input type="radio" name="generation_mode" value="manual" checked> マニュアル生成</label>
+              <label class="radio-inline"><input type="radio" name="generation_mode" value="minutes"> 議事録生成</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="video-file">動画ファイル</label>
+            <input type="file" class="form-control-file" id="video-file" name="video_file" accept="video/*" required>
+          </div>
+          <div class="form-group">
+            <label>動画プレビュー</label>
+            <video id="video-preview" controls class="mb-2"></video>
+            <button type="button" id="capture-btn" class="btn btn-secondary btn-sm">キャプチャ</button>
+          </div>
+          <div id="captured-frames" class="mb-3">
+            <p class="text-center">ここに画像をドラッグ＆ドロップしてください</p>
+          </div>
+          <button type="submit" class="btn btn-primary">アップロード</button>
+        </form>
+        <div id="upload-result" class="mt-3"></div>
+        <div id="generation-results" class="mt-5 hidden">
+          <h4>生成されたコンテンツ</h4>
+          <div class="form-group">
+            <label for="generated-content">生成内容（編集可能; 画像ドラッグ&ドロップ可）</label>
+            <textarea id="generated-content" class="form-control" rows="10"></textarea>
+          </div>
+          <button id="pdf-convert-btn" class="btn btn-success">PDF化して公開PDF管理に追加</button>
+        </div>
+      </div>
+
+      <!-- LINEユーザー管理セクション -->
+      <div id="section-line-users" class="section hidden">
+        <h3>LINEユーザー管理</h3>
+        <button id="load-line-users-btn" class="btn btn-secondary mb-2">LINEユーザー一覧を読み込み</button>
+        <table class="table table-bordered" id="line-users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>表示名</th>
+              <th>部署</th>
+              <th>ブロック状態</th>
+              <th>登録日時</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="line-users-table-body"></tbody>
+        </table>
+      </div>
+
+      <!-- PDF管理セクション -->
+      <div id="section-documents" class="section hidden">
+        <h3>PDF管理</h3>
+        <div id="document-upload-section" class="mb-4">
+          <h4>新規PDFアップロード</h4>
+          <form id="document-upload-form" enctype="multipart/form-data">
+            <div class="form-group">
+              <label for="document-title">タイトル</label>
+              <input type="text" class="form-control" id="document-title" name="title" required>
+            </div>
+            <div class="form-group">
+              <label for="document-category">カテゴリ</label>
+              <select class="form-control" id="document-category" name="category" required>
+                <option value="">選択してください</option>
+                <option value="マニュアル">マニュアル</option>
+                <option value="社内規定">社内規定</option>
+                <option value="議事録">議事録</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="document-file">PDFファイル</label>
+              <input type="file" class="form-control-file" id="document-file" name="document_file" required>
+            </div>
+            <button type="submit" class="btn btn-primary">アップロード</button>
+          </form>
+          <div id="doc-upload-result" class="mt-2"></div>
+        </div>
+        <div id="document-list-section">
+          <h4>登録済みPDF一覧</h4>
+          <button id="load-documents-btn" class="btn btn-secondary mb-2">PDF一覧を読み込み</button>
+          <table class="table table-bordered" id="documents-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>タイトル</th>
+                <th>カテゴリ</th>
+                <th>登録日時</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="documents-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 通知セクション（一般ユーザー用） -->
+      <div id="section-notifications-user" class="section hidden">
+        <h3>通知一覧</h3>
+        <button id="load-notifications-btn-user" class="btn btn-secondary mb-2">通知を読み込む</button>
+        <div>
+          <h4>自分宛の通知</h4>
+          <table class="table table-bordered" id="notifications-table-user">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>メッセージ</th>
+                <th>日時</th>
+                <th>既読状態</th>
+              </tr>
+            </thead>
+            <tbody id="notifications-table-body-user"></tbody>
+          </table>
+          <div id="search-logs-user-section" class="hidden mt-3">
+            <h4>検索ログ（管理者のみ）</h4>
+            <table class="table table-bordered" id="search-logs-table-user">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>ユーザー名</th>
+                  <th>検索キーワード</th>
+                  <th>ヒット件数</th>
+                  <th>検索日時</th>
+                </tr>
+              </thead>
+              <tbody id="search-logs-table-body-user"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- PDF検索セクション -->
+      <div id="section-search" class="section hidden">
+        <h3>PDF検索</h3>
+        <div class="form-group">
+          <input type="text" id="search-keyword" class="form-control" placeholder="キーワードを入力">
+        </div>
+        <button id="search-btn" class="btn btn-primary">検索</button>
+        <div id="search-results" class="mt-3"></div>
+      </div>
+
+      <!-- アカウント管理セクション -->
+      <div id="section-account" class="section hidden">
+        <h3>アカウント管理</h3>
+        <form id="account-update-form">
+          <div class="form-group">
+            <label for="current-password">現在のパスワード</label>
+            <input type="password" class="form-control" id="current-password" required>
+          </div>
+          <div class="form-group">
+            <label for="new-username">新しいユーザー名</label>
+            <input type="text" class="form-control" id="new-username">
+          </div>
+          <div class="form-group">
+            <label for="new-password">新しいパスワード</label>
+            <input type="password" class="form-control" id="new-password">
+          </div>
+          <div class="form-group">
+            <label for="confirm-new-password">新しいパスワード（確認）</label>
+            <input type="password" class="form-control" id="confirm-new-password">
+          </div>
+          <button type="submit" class="btn btn-primary">更新する</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDFプレビュー用モーダル（編集ボタンを押した時に表示） -->
+  <div class="modal fade" id="documentPreviewModal" tabindex="-1" role="dialog" aria-labelledby="documentPreviewModalLabel" aria-modal="true">
+    <div class="modal-dialog modal-xl" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="documentPreviewModalLabel" class="modal-title">PDFプレビュー</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="閉じる">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <iframe id="document-preview-iframe" style="width:100%; height:700px;" frameborder="0"></iframe>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- jQuery と Bootstrap JS -->
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+  <script>
+    $(document).ready(function(){
+      let jwtToken = "";
+      let currentUserRole = "";
+      let currentGenerationMode = "manual"; // 動画アップロード/生成モードを保持
+
+      // ----------------------------------------------------------------------
+      // 画面制御関数
+      // ----------------------------------------------------------------------
+      function showEnvSection(section) {
+        $("#section-company-management, #section-notifications").addClass("hidden");
+        if(section === "company"){
+          $("#section-company-management").removeClass("hidden");
+        } else if(section === "notifications"){
+          $("#section-notifications").removeClass("hidden");
+        }
+      }
+      function showUserSection(section) {
+        $("#section-upload, #section-line-users, #section-documents, #section-notifications-user, #section-search, #section-account").addClass("hidden");
+        if(section === "upload"){
+          $("#section-upload").removeClass("hidden");
+        } else if(section === "line"){
+          $("#section-line-users").removeClass("hidden");
+        } else if(section === "documents"){
+          $("#section-documents").removeClass("hidden");
+        } else if(section === "notifications"){
+          $("#section-notifications-user").removeClass("hidden");
+        } else if(section === "search"){
+          $("#section-search").removeClass("hidden");
+        } else if(section === "account"){
+          $("#section-account").removeClass("hidden");
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // ログイン
+      // ----------------------------------------------------------------------
+      $("#login-form").on("submit", function(e){
+        e.preventDefault();
+        const username = $("#login-username").val().trim();
+        const password = $("#login-password").val().trim();
+        $.ajax({
+          url: "/login",
+          type: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({ username: username, password: password }),
+          success: function(data){
+            if(data.error){
+              $("#login-result").text(data.error);
+            } else {
+              jwtToken = data.token || "";
+              currentUserRole = data.role;
+              $("#login-result").text("ログイン成功！ ロール: " + data.role);
+              $("#login-section").addClass("hidden");
+              // 会社名・会社コードがあれば、一般ユーザーのサイドバーに表示
+              if(data.company_name && data.company_code){
+                $("#user-company-info").text(`${data.company_name} (${data.company_code})`);
+              }
+
+              if(currentUserRole === "env"){
+                $("#env-app-section").removeClass("hidden");
+                showEnvSection("company");
+                loadCompanies(); // 企業一覧を自動読み込み
+              } else {
+                $("#user-app-section").removeClass("hidden");
+                showUserSection("upload"); // 一般ユーザーは動画アップロード画面を初期表示
+              }
+            }
+          },
+          error: function(xhr){
+            console.error("ログインエラー:", xhr);
+            $("#login-result").text("ログインに失敗しました");
+          }
+        });
+      });
+
+      // ログアウト
+      $("#env-logout, #user-logout").on("click", function(){
+        $.ajax({
+          url: "/logout",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            jwtToken = "";
+            currentUserRole = "";
+            $("#env-app-section, #user-app-section").addClass("hidden");
+            $("#login-section").removeClass("hidden");
+          },
+          error: function(xhr){
+            console.error("ログアウトエラー:", xhr);
+          }
+        });
+      });
+
+      // ----------------------------------------------------------------------
+      // ENVメニュー
+      // ----------------------------------------------------------------------
+      $("#nav-company-management").on("click", function(){
+        showEnvSection("company");
+        loadCompanies();
+      });
+      // サイドバー通知一覧ボタンは削除済み
+      $("#load-companies-btn").on("click", function(){
+        loadCompanies();
+      });
+
+      // 企業一覧取得 → テーブル表示
+      function loadCompanies(){
+        $.ajax({
+          url: "/companies/list",
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            const tbody = $("#company-table-body");
+            tbody.empty();
+            if(data.companies && data.companies.length > 0){
+              data.companies.forEach(function(c){
+                const tr = $("<tr></tr>");
+                tr.append("<td>"+c.id+"</td>");
+                tr.append("<td>"+c.name+"</td>");
+                tr.append("<td>"+c.login_code+"</td>");
+                tr.append("<td>"+(c.created_at||"")+"</td>");
+                tr.append("<td>"+(c.subscription_end||"未設定")+"</td>");
+
+                // 操作列: サブスク延長、削除、PWリセット、編集ボタン
+                tr.append(`
+                  <td>
+                    <button class="btn btn-sm btn-warning" onclick="updateSubscription(${c.id})">
+                      サブスク延長
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteCompany(${c.id})">
+                      削除
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="resetCompanyPassword(${c.id})">
+                      PWリセット
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="editCompanyInfo(${c.id})">
+                      編集
+                    </button>
+                  </td>
+                `);
+                tbody.append(tr);
+              });
+            } else {
+              tbody.html("<tr><td colspan='6' class='text-center'>企業がありません。</td></tr>");
+            }
+          },
+          error: function(xhr){
+            console.error("企業一覧取得エラー:", xhr);
+          }
+        });
+      }
+
+      // 新規企業追加
+      $("#company-add-form").on("submit", function(e){
+        e.preventDefault();
+        const name = $("#company-name").val().trim();
+        $.ajax({
+          url: "/companies/add",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          contentType: "application/json",
+          data: JSON.stringify({ name: name }),
+          success: function(data){
+            alert(data.message || data.error);
+            loadCompanies();
+          },
+          error: function(xhr){
+            console.error("企業追加エラー:", xhr);
+          }
+        });
+      });
+
+      // サブスク延長ボタン
+      window.updateSubscription = function(companyId) {
+        if(!confirm("サブスクリプションを30日延長しますか？")) return;
+        $.ajax({
+          url: `/companies/${companyId}/update_subscription`,
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            loadCompanies();
+          },
+          error: function(xhr){
+            console.error("サブスク延長エラー:", xhr);
+            alert("サブスク延長に失敗しました");
+          }
+        });
+      };
+
+      // 企業削除ボタン
+      window.deleteCompany = function(companyId) {
+        if(!confirm("本当にこの企業を削除しますか？")) return;
+        $.ajax({
+          url: `/companies/${companyId}/delete`,
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            loadCompanies();
+          },
+          error: function(xhr){
+            console.error("企業削除エラー:", xhr);
+            alert("企業削除に失敗しました");
+          }
+        });
+      };
+
+      // PWリセットボタン
+      window.resetCompanyPassword = function(companyId) {
+        const newPw = prompt("新パスワードを入力してください");
+        if(!newPw) return; // 取り消し
+        $.ajax({
+          url: `/companies/${companyId}/update`,
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          contentType: "application/json",
+          data: JSON.stringify({ password: newPw }),
+          success: function(data){
+            alert(data.message);
+          },
+          error: function(xhr){
+            console.error("パスワードリセットエラー:", xhr);
+            alert("パスワードのリセットに失敗しました");
+          }
+        });
+      };
+
+      // ★ 企業編集ボタン (企業名、管理ユーザー名、パスワードを変更)
+      window.editCompanyInfo = function(companyId) {
+        const newCompanyName = prompt("新しい企業名 (空欄の場合は変更なし)");
+        const newUserName = prompt("新しいユーザー名 (空欄の場合は変更なし)");
+        const newPassword = prompt("新しいパスワード (空欄の場合は変更なし)");
+
+        // 部分的に更新するためオブジェクトを組み立て
+        const updateData = {};
+        if(newCompanyName) {
+          updateData.name = newCompanyName;
+        }
+        if(newUserName) {
+          updateData.user_name = newUserName; // バックエンドで user_name を受け取り更新
+        }
+        if(newPassword) {
+          updateData.password = newPassword;
+        }
+
+        // 実行
+        $.ajax({
+          url: `/companies/${companyId}/update`,
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          contentType: "application/json",
+          data: JSON.stringify(updateData),
+          success: function(data){
+            alert(data.message);
+            loadCompanies();
+          },
+          error: function(xhr){
+            console.error("企業編集エラー:", xhr);
+            alert("企業情報の更新に失敗しました");
+          }
+        });
+      };
+
+      // ----------------------------------------------------------------------
+      // ENV用 通知一覧ローダ（サイドバーからは削除しているが一応残す）
+      // ----------------------------------------------------------------------
+      function loadNotifications(role){
+        $.ajax({
+          url: "/notifications",
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            if(role === "env"){
+              const ntBody = $("#notifications-table-body");
+              ntBody.empty();
+              if(data.notifications && data.notifications.length>0){
+                data.notifications.forEach(function(n){
+                  const tr = $("<tr></tr>");
+                  tr.append("<td>"+n.id+"</td>");
+                  tr.append("<td>"+n.message+"</td>");
+                  tr.append("<td>"+n.created_at+"</td>");
+                  tr.append("<td>"+(n.read_flag?"既読":"未読")+"</td>");
+                  ntBody.append(tr);
+                });
+              } else {
+                ntBody.html("<tr><td colspan='4' class='text-center'>通知がありません。</td></tr>");
+              }
+              // search_logs
+              const slogBody = $("#search-logs-table-body");
+              slogBody.empty();
+              if(data.search_logs && data.search_logs.length>0){
+                data.search_logs.forEach(function(sl){
+                  const tr = $("<tr></tr>");
+                  tr.append("<td>"+sl.search_id+"</td>");
+                  tr.append("<td>"+sl.line_display_name+"</td>");
+                  tr.append("<td>"+sl.keyword+"</td>");
+                  tr.append("<td>"+sl.found_count+"</td>");
+                  tr.append("<td>"+sl.searched_at+"</td>");
+                  slogBody.append(tr);
+                });
+              } else {
+                slogBody.html("<tr><td colspan='5' class='text-center'>検索ログなし</td></tr>");
+              }
+            }
+          },
+          error: function(xhr){
+            console.error("通知取得エラー:", xhr);
+          }
+        });
+      }
+      $("#load-notifications-btn").on("click", function(){
+        loadNotifications("env");
+      });
+
+      // ----------------------------------------------------------------------
+      // 一般ユーザー：メニュー
+      // ----------------------------------------------------------------------
+      $("#nav-user-upload").on("click", function(){ showUserSection("upload"); });
+      $("#nav-line-users").on("click", function(){
+        showUserSection("line");
+        loadLineUsers();
+      });
+      $("#nav-documents").on("click", function(){
+        showUserSection("documents");
+        loadDocuments();
+      });
+      $("#nav-search").on("click", function(){
+        showUserSection("search");
+      });
+      $("#nav-account").on("click", function(){
+        showUserSection("account");
+      });
+
+      // ----------------------------------------------------------------------
+      // LINEユーザー管理
+      // ----------------------------------------------------------------------
+      $("#load-line-users-btn").on("click", function(){
+        loadLineUsers();
+      });
+      function loadLineUsers(){
+        $.ajax({
+          url: "/line/users",
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            const tbody = $("#line-users-table-body");
+            tbody.empty();
+            if(data.users && data.users.length > 0){
+              data.users.forEach(function(u){
+                const tr = $("<tr></tr>");
+                tr.append("<td>"+u.id+"</td>");
+                tr.append("<td>"+(u.line_display_name||"")+"</td>");
+                tr.append("<td>"+(u.department||"")+"</td>");
+                tr.append("<td>"+(u.is_blocked?"ブロック中":"有効")+"</td>");
+                tr.append("<td>"+(u.created_at||"")+"</td>");
+                tr.append(`
+                  <td>
+                    <button class="btn btn-sm btn-danger" onclick="blockLineUser(${u.id})">ブロック</button>
+                    <button class="btn btn-sm btn-success" onclick="unblockLineUser(${u.id})">解除</button>
+                  </td>
+                `);
+                tbody.append(tr);
+              });
+            } else {
+              tbody.html("<tr><td colspan='6' class='text-center'>登録されたLINEユーザーがいません。</td></tr>");
+            }
+          },
+          error: function(xhr){
+            console.error("LINEユーザー取得エラー:", xhr);
+          }
+        });
+      }
+      window.blockLineUser = function(uid){
+        $.ajax({
+          url: "/line/users/"+uid+"/block",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            loadLineUsers();
+          },
+          error: function(xhr){
+            console.error("ブロックエラー:", xhr);
+          }
+        });
+      };
+      window.unblockLineUser = function(uid){
+        $.ajax({
+          url: "/line/users/"+uid+"/unblock",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            loadLineUsers();
+          },
+          error: function(xhr){
+            console.error("ブロック解除エラー:", xhr);
+          }
+        });
+      };
+      // 本来 "承認" ボタンが必要なら下記を活用
+      window.approveLineUser = function(uid){
+        $.ajax({
+          url: "/line/users/"+uid+"/approve",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            alert(data.message);
+            loadLineUsers();
+          },
+          error: function(xhr){
+            console.error("承認エラー:", xhr);
+          }
+        });
+      };
+
+      // ----------------------------------------------------------------------
+      // PDF管理
+      // ----------------------------------------------------------------------
+      function loadDocuments(){
+        $.ajax({
+          url: "/documents/list",
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            const tbody = $("#documents-table-body");
+            tbody.empty();
+            if(data.documents && data.documents.length>0){
+              data.documents.forEach(function(doc){
+                const tr = $("<tr></tr>");
+                tr.append("<td>"+doc.id+"</td>");
+                tr.append("<td>"+doc.title+"</td>");
+                tr.append("<td>"+doc.category+"</td>");
+                tr.append("<td>"+(doc.created_at||"")+"</td>");
+                tr.append(`
+                  <td>
+                    <button class="btn btn-sm btn-primary" onclick="openDocPreview(${doc.id})">
+                      編集
+                    </button>
+                  </td>
+                `);
+                tbody.append(tr);
+              });
+            } else {
+              tbody.html("<tr><td colspan='5' class='text-center'>PDFがありません。</td></tr>");
+            }
+          },
+          error: function(xhr){
+            console.error("PDF一覧取得エラー:", xhr);
+          }
+        });
+      }
+      $("#load-documents-btn").on("click", function(){ loadDocuments(); });
+
+      // 新規PDFアップロード
+      $("#document-upload-form").on("submit", function(e){
+        e.preventDefault();
+        const formData = new FormData(this);
+        $.ajax({
+          url: "/documents/upload",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          data: formData,
+          processData: false,
+          contentType: false,
+          success: function(data){
+            $("#doc-upload-result").text(data.message || data.error);
+            loadDocuments();
+          },
+          error: function(xhr){
+            console.error("PDFアップロードエラー:", xhr);
+            $("#doc-upload-result").text("PDFアップロードに失敗しました");
+          }
+        });
+      });
+
+      // PDFプレビューをモーダル表示
+      window.openDocPreview = function(docId){
+        $.ajax({
+          url: "/documents/"+docId+"/generate_view_link",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            if(data.view_url){
+              $("#document-preview-iframe").attr("src", data.view_url);
+              $("#documentPreviewModal").modal("show");
+            } else {
+              alert("プレビューURLの取得に失敗しました");
+            }
+          },
+          error: function(xhr){
+            console.error("PDFプレビューURL生成エラー:", xhr);
+            alert("PDFプレビューの取得に失敗しました");
+          }
+        });
+      };
+
+      // ----------------------------------------------------------------------
+      // 動画アップロード
+      // ----------------------------------------------------------------------
+function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
+  let attempts = 0;
+  const poller = setInterval(function(){
+    $.ajax({
+      url: "/videos/" + videoId + "/view",
+      type: "GET",
+      headers: { "Authorization": "Bearer " + jwtToken },
+      success: function(data){
+        // ここでは、summary_textが非空になればタスク完了と判断
+        if (data.summary_text && data.summary_text !== "要約がありません") {
+          clearInterval(poller);
+          // 取得したsummaryやquizを画面に表示する
+          $("#upload-result").text("動画解析完了！");
+          $("#generated-content").val("要約: " + data.summary_text + "\n\nクイズ: " + data.quiz_text);
+        } else {
+          console.log("まだ解析中です...");
+        }
+      },
+      error: function(xhr){
+        console.error("ポーリングエラー:", xhr);
+      }
+    });
+    attempts++;
+    if (attempts >= maxAttempts) {
+      clearInterval(poller);
+      alert("解析に時間がかかりすぎています。しばらくしてから再度確認してください。");
+    }
+  }, interval);
+}
+
+
+
+
+
+      $("input[name='generation_mode']").on("change", function(){
+        currentGenerationMode = $(this).val(); // "manual" or "minutes"
+      });
+
+      $("#video-file").on("change", function(){
+        const file = this.files[0];
+        if(file){
+          const url = URL.createObjectURL(file);
+          $("#video-preview").attr("src", url).removeClass("d-none");
+          $("#captured-frames").empty().append('<p class="text-center">ここに画像をドラッグ＆ドロップしてください</p>');
+        }
+      });
+
+      // キャプチャボタン
+      $("#capture-btn").on("click", function(){
+        const video = document.getElementById("video-preview");
+        if(video.paused){
+          alert("動画を再生中にキャプチャしてください。");
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function(blob){
+          addCaptureImage(blob);
+        }, "image/jpeg");
+      });
+
+      // ドラッグ&ドロップでキャプチャ画像追加
+      $("#captured-frames").on("dragover", function(e){
+        e.preventDefault();
+      });
+      $("#captured-frames").on("drop", function(e){
+        e.preventDefault();
+        const files = e.originalEvent.dataTransfer.files;
+        for(let i=0; i<files.length; i++){
+          if(files[i].type.startsWith("image/")){
+            addCaptureImage(files[i]);
+          }
+        }
+      });
+
+      let capturedImages = [];
+      function addCaptureImage(blob){
+        capturedImages.push(blob);
+        renderCapturedFrames();
+      }
+      function renderCapturedFrames(){
+        $("#captured-frames").empty();
+        capturedImages.forEach((blob, idx)=>{
+          const url = URL.createObjectURL(blob);
+          const item = $(`
+            <div class="capture-item">
+              <img src="${url}" alt="キャプチャ${idx}">
+              <button class="delete-capture" data-idx="${idx}">×</button>
+            </div>
+          `);
+          $("#captured-frames").append(item);
+        });
+      }
+      $("#captured-frames").on("click", ".delete-capture", function(){
+        const idx = $(this).data("idx");
+        capturedImages.splice(idx, 1);
+        renderCapturedFrames();
+      });
+
+      // 動画アップロード フォームsubmit
+      $("#video-upload-form").on("submit", function(e){
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append("generation_mode", currentGenerationMode);
+
+        // キャプチャ画像をまとめて送信
+        capturedImages.forEach((blob, idx)=>{
+          formData.append("image_files", blob, "capture_" + idx + ".jpg");
+        });
+
+        $.ajax({
+          url: "/videos/upload",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          data: formData,
+          processData: false,
+          contentType: false,
+          timeout: 180000,
+          success: function(data){
+            if(data.error){
+              $("#upload-result").text(data.error);
+            } else {
+              $("#upload-result").text("動画アップロード完了！ 解析を開始しています...");
+              pollVideoStatus(data.video_id);
+              $("#generation-results").removeClass("hidden");
+              $("#generated-content").val(
+                "要約: " + data.result.summary_text + "\n\nクイズ: " + data.result.quiz_text
+              );
+            }
+          },
+          error: function(xhr){
+            console.error("動画アップロードエラー:", xhr);
+            $("#upload-result").text("動画アップロードに失敗しました");
+          }
+        });
+      });
+
+      // ----------------------------------------------------------------------
+      // 生成内容テキストにドラッグ&ドロップ: 画像をBase64埋め込み
+      // ----------------------------------------------------------------------
+      $("#generated-content").on("dragover", function(e){
+        e.preventDefault();
+      });
+      $("#generated-content").on("drop", function(e){
+        e.preventDefault();
+        const files = e.originalEvent.dataTransfer.files;
+        if(files.length > 0){
+          for(let i = 0; i < files.length; i++){
+            if(files[i].type.startsWith("image/")){
+              embedImageInTextArea(files[i]);
+            }
+          }
+        }
+      });
+      function embedImageInTextArea(file){
+        const reader = new FileReader();
+        reader.onload = function(evt){
+          const base64 = evt.target.result; // data:image/xxx;base64,...
+          const textarea = document.getElementById("generated-content");
+          const currentVal = textarea.value;
+          const imgTag = `\n<img src="${base64}" alt="EmbeddedImage">\n`;
+          // カーソル位置に挿入する
+          const startPos = textarea.selectionStart;
+          const endPos = textarea.selectionEnd;
+          const newVal = currentVal.substring(0, startPos)
+                        + imgTag
+                        + currentVal.substring(endPos);
+          textarea.value = newVal;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // ----------------------------------------------------------------------
+      // PDF化ボタン: /documents/publish に generation_mode も送る
+      // ----------------------------------------------------------------------
+      $("#pdf-convert-btn").on("click", function(){
+        const title = prompt("PDFのタイトルを入力してください", "新規ドキュメント");
+        if(!title) return;
+
+        const content = $("#generated-content").val().trim();
+        if(!content){
+          alert("生成内容が空です。");
+          return;
+        }
+
+        $.ajax({
+          url: "/documents/publish",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          data: {
+            title: title,
+            content: content,
+            generation_mode: currentGenerationMode // "manual" or "minutes"
+          },
+          success: function(data){
+            if(data.error){
+              alert(data.error);
+            } else {
+              alert(data.message);
+              loadDocuments(); // 新しく生成されたPDFを一覧に表示
+            }
+          },
+          error: function(xhr){
+            console.error("PDF発行エラー:", xhr);
+            alert("PDF発行に失敗しました");
+          }
+        });
+      });
+
+      // ----------------------------------------------------------------------
+      // 通知・検索ログ（一般ユーザー用）
+      // ----------------------------------------------------------------------
+      function loadNotificationsForUser(){
+        $.ajax({
+          url: "/notifications",
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            const ntBody = $("#notifications-table-body-user");
+            ntBody.empty();
+            if(data.notifications && data.notifications.length>0){
+              data.notifications.forEach(function(n){
+                const tr = $("<tr></tr>");
+                tr.append("<td>"+n.id+"</td>");
+                tr.append("<td>"+n.message+"</td>");
+                tr.append("<td>"+n.created_at+"</td>");
+                tr.append("<td>"+(n.read_flag?"既読":"未読")+"</td>");
+                ntBody.append(tr);
+              });
+            } else {
+              ntBody.html("<tr><td colspan='4' class='text-center'>通知がありません。</td></tr>");
+            }
+            // admin の場合は search_logs も表示
+            if(currentUserRole === "admin"){
+              $("#search-logs-user-section").removeClass("hidden");
+              const slogBody = $("#search-logs-table-body-user");
+              slogBody.empty();
+              if(data.search_logs && data.search_logs.length>0){
+                data.search_logs.forEach(function(sl){
+                  const tr = $("<tr></tr>");
+                  tr.append("<td>"+sl.search_id+"</td>");
+                  tr.append("<td>"+sl.line_display_name+"</td>");
+                  tr.append("<td>"+sl.keyword+"</td>");
+                  tr.append("<td>"+sl.found_count+"</td>");
+                  tr.append("<td>"+sl.searched_at+"</td>");
+                  slogBody.append(tr);
+                });
+              } else {
+                slogBody.html("<tr><td colspan='5' class='text-center'>検索ログなし</td></tr>");
+              }
+            }
+          },
+          error: function(xhr){
+            console.error("通知取得エラー:", xhr);
+          }
+        });
+      }
+      $("#load-notifications-btn-user").on("click", function(){
+        loadNotificationsForUser();
+      });
+
+      // ----------------------------------------------------------------------
+      // PDF検索（一般ユーザー用）
+      // ----------------------------------------------------------------------
+      $("#search-btn").on("click", function(){
+        const keyword = $("#search-keyword").val().trim();
+        if(!keyword){
+          alert("キーワードを入力してください。");
+          return;
+        }
+        $.ajax({
+          url: "/search?keyword="+encodeURIComponent(keyword),
+          type: "GET",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          success: function(data){
+            const container = $("#search-results");
+            container.empty();
+            if(data.results && data.results.length>0){
+              data.results.forEach(function(doc){
+                const card = $(`
+                  <div class="card mb-2">
+                    <div class="card-body">
+                      <h5 class="card-title">${doc.title}</h5>
+                      <p class="card-text">カテゴリ: ${doc.category}</p>
+                      <p class="card-text"><small>登録日時: ${doc.created_at}</small></p>
+                    </div>
+                  </div>
+                `);
+                container.append(card);
+              });
+            } else {
+              container.html("<p>該当するPDFがありません。</p>");
+            }
+          },
+          error: function(xhr){
+            console.error("PDF検索エラー:", xhr);
+          }
+        });
+      });
+
+      // ----------------------------------------------------------------------
+      // アカウント管理
+      // ----------------------------------------------------------------------
+      $("#account-update-form").on("submit", function(e){
+        e.preventDefault();
+        const currentPassword = $("#current-password").val().trim();
+        const newUsername = $("#new-username").val().trim();
+        const newPassword = $("#new-password").val().trim();
+        const confirmNewPassword = $("#confirm-new-password").val().trim();
+
+        if(newPassword && (newPassword !== confirmNewPassword)){
+          alert("新しいパスワードと確認用パスワードが一致しません。");
+          return;
+        }
+
+        $.ajax({
+          url: "/account/update",
+          type: "POST",
+          headers: { "Authorization": "Bearer " + jwtToken },
+          data: {
+            current_password: currentPassword,
+            new_username: newUsername,
+            new_password: newPassword
+          },
+          success: function(data){
+            if(data.error){
+              alert(data.error);
+            } else {
+              alert(data.message);
+            }
+          },
+          error: function(xhr){
+            console.error("アカウント更新エラー:", xhr);
+            alert("アカウント更新に失敗しました");
+          }
+        });
+      });
+    });
+
+    // グローバルに定義されているが、上書き回避用のダミー定義
+    window.blockLineUser = window.blockLineUser || function(){};
+    window.unblockLineUser = window.unblockLineUser || function(){};
+    window.approveLineUser = window.approveLineUser || function(){};
+  </script>
+</body>
+</html>
