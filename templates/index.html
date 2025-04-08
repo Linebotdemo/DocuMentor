@@ -961,60 +961,55 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
       });
 
       // 動画アップロード フォームsubmit
-     $("#video-upload-form").on("submit", function(e){
-        e.preventDefault();
-        const formData = new FormData(this);
-        formData.append("generation_mode", currentGenerationMode);
+$("#video-upload-form").on("submit", function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  formData.append("generation_mode", currentGenerationMode);
 
-        // キャプチャ画像をまとめて送信
-        capturedImages.forEach((blob, idx)=>{
-          formData.append("image_files", blob, "capture_" + idx + ".jpg");
-        });
-
-function uploadVideo(formData) {
-  $.ajax({
-    url: "/videos/upload",
-    type: "POST",
-    headers: { "Authorization": "Bearer " + jwtToken },
-    data: formData,
-    processData: false,
-    contentType: false,
-    timeout: 180000, // タイムアウトを3分 (180秒) に設定
-    success: function(data) {
-      console.log("アップロードレスポンス:", data); // レスポンス全体を確認
-
-      // エラーがあれば表示して終了
-      if (data.error) {
-        $("#upload-result").text(data.error);
-        return;
-      }
-
-      // 正常なレスポンスの場合
-      $("#upload-result").text("動画アップロード完了！ 解析を開始しています...");
-
-      // video_id がレスポンスに含まれているか確認
-      if (data.video_id) {
-        pollVideoStatus(data.video_id);  // 定義済みの解析状況ポーリング関数を呼び出す
-      } else {
-        console.error("video_id がレスポンスに存在しません。");
-      }
-
-      // 生成結果表示用領域を表示
-      $("#generation-results").removeClass("hidden");
-
-      // 生成された要約やクイズをテキストエリアに表示
-      if (data.result) {
-        $("#generated-content").val(
-          "要約: " + data.result.summary_text + "\n\nクイズ: " + data.result.quiz_text
-        );
-      }
-    },
-    error: function(xhr) {
-      console.error("動画アップロードエラー:", xhr);
-      $("#upload-result").text("動画アップロードに失敗しました");
-    }
+  // キャプチャ画像をまとめて送信
+  capturedImages.forEach((blob, idx) => {
+    formData.append("image_files", blob, "capture_" + idx + ".jpg");
   });
-}
+
+  // submit イベントハンドラ内に関数定義
+  function uploadVideo(formData) {
+    $.ajax({
+      url: "/videos/upload",
+      type: "POST",
+      headers: { "Authorization": "Bearer " + jwtToken },
+      data: formData,
+      processData: false,
+      contentType: false,
+      timeout: 180000,
+      success: function(data) {
+        console.log("アップロードレスポンス:", data);
+        if (data.error) {
+          $("#upload-result").text(data.error);
+          return;
+        }
+        $("#upload-result").text("動画アップロード完了！ 解析を開始しています...");
+        if (data.video_id) {
+          pollVideoStatus(data.video_id);
+        } else {
+          console.error("video_id がレスポンスに存在しません。");
+        }
+        $("#generation-results").removeClass("hidden");
+        if (data.result) {
+          $("#generated-content").val(
+            "要約: " + data.result.summary_text + "\n\nクイズ: " + data.result.quiz_text
+          );
+        }
+      },
+      error: function(xhr) {
+        console.error("動画アップロードエラー:", xhr);
+        $("#upload-result").text("動画アップロードに失敗しました");
+      }
+    });
+  } // uploadVideo の定義をここで閉じる
+
+  // uploadVideo 関数の呼び出し
+  uploadVideo(formData);
+}); // submit イベントハンドラの閉じ括弧
 
       // ----------------------------------------------------------------------
       // 生成内容テキストにドラッグ&ドロップ: 画像をBase64埋め込み
