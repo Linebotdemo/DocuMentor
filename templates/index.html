@@ -971,7 +971,7 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
           formData.append("image_files", blob, "capture_" + idx + ".jpg");
         });
 
-$.ajax({
+        $.ajax({
   url: "/videos/upload",
   type: "POST",
   headers: { "Authorization": "Bearer " + jwtToken },
@@ -1002,6 +1002,7 @@ $.ajax({
       $("#upload-result").text("動画アップロードに失敗しました");
   }
 });
+
 
       // ----------------------------------------------------------------------
       // 生成内容テキストにドラッグ&ドロップ: 画像をBase64埋め込み
