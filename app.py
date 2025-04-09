@@ -903,11 +903,11 @@ def upload_video():
 
         # 4) Whisper解析＋クイズ生成処理（略）
         try:
-            print("[DEBUG] before calling .delay()")
+             print("[DEBUG] タスク送信前: video_id =", video.id)
             transcribe_video_task.delay(video.cloudinary_url, video.id)
-            print("[DEBUG] after calling .delay()")
+             print("[DEBUG] タスク送信後: タスク送信成功")
         except Exception as e:
-            print(f"非同期タスク送信失敗: {str(e)}")
+            print(f"[ERROR] タスク送信失敗: {str(e)}")
 
         # 5) クイズテキストの取得（略）
         quiz_obj = Quiz.query.filter_by(video_id=video.id).first()
@@ -1002,11 +1002,12 @@ def get_my_videos():
 
 @celery.task
 def transcribe_video_task(video_url, video_id):
+    print(f"[DEBUG] タスク実行開始: video_url={video_url}, video_id={video_id}")
     whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
     try:
         response = requests.post(whisper_api_url, json={"video_url": video_url}, timeout=600)
         text = response.json().get("text", "")
-        print(f"[Whisper結果] {text}")
+         print(f"[DEBUG] Whisper結果: {text}")
 
         # DB保存のロジック
         video = Video.query.get(video_id)
@@ -1016,7 +1017,7 @@ def transcribe_video_task(video_url, video_id):
 
         return text
     except Exception as e:
-        print(f"Whisperエラー: {str(e)}")
+        print(f"[ERROR] Whisperタスクエラー: {str(e)}")
         return None
 
 
