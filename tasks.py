@@ -1,6 +1,5 @@
-import os
 from celery import Celery
-from app.tasks import transcribe_video_task
+from app import app, db
 
 celery = Celery(
     "tasks",
