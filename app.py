@@ -8,7 +8,10 @@ from datetime import datetime, timedelta
 from functools import wraps
 from celery import Celery
 #from app import db, Video
-from tasks import transcribe_video_task
+
+
+from app.tasks import transcribe_video_task
+
 
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
