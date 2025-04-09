@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from celery import Celery
 #from app import db, Video
-
+from tasks import transcribe_video_task
 
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
@@ -307,6 +307,23 @@ def force_create_tables():
     return "Tables created!"
 
 
+
+
+def make_celery(app):
+    celery = Celery(
+        app.import_name,
+        broker=app.config['CELERY_BROKER_URL'],
+        backend=app.config['CELERY_RESULT_BACKEND'],
+    )
+    celery.conf.update(app.config)
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery.Task = ContextTask
+    return celery
 
 
 ###############################################################################
