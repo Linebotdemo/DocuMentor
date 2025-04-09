@@ -966,7 +966,7 @@ def transcribe_video_task(video_url, video_id):
     try:
         response = requests.post(whisper_api_url, json={"video_url": video_url}, timeout=600)
         text = response.json().get("text", "")
-         print(f"[DEBUG] Whisper結果: {text}")
+        print(f"[DEBUG] Whisper結果: {text}")
 
         # DB保存のロジック
         video = Video.query.get(video_id)
