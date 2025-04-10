@@ -844,6 +844,27 @@ def list_line_users():
         })
     return jsonify({"users": result})
 
+
+@app.route("/videos/<int:video_id>/update_transcription", methods=["POST"])
+def update_transcription(video_id):
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if api_key != os.getenv("INTERNAL_API_KEY"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    whisper_text = data.get("whisper_text")
+    if not whisper_text:
+        return jsonify({"error": "No text provided"}), 400
+
+    video = Video.query.get(video_id)
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    video.whisper_text = whisper_text
+    db.session.commit()
+    return jsonify({"message": "Transcription updated"})
+
+
 ###############################################################################
 # PDFリンク共有
 ###############################################################################
@@ -949,20 +970,6 @@ def upload_video():
             print("[DEBUG] タスク送信後")
         except Exception as e:
             print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
-
-        # 5) クイズテキスト
-        quiz_obj = Quiz.query.filter_by(video_id=video.id).first()
-        quiz_text = quiz_obj.auto_quiz_text if quiz_obj else ""
-
-        result = {
-            "summary_text": video.summary_text,
-            "quiz_text": quiz_text
-        }
-        return jsonify({"message": "動画アップロード＆処理完了", "video_id": video.id, "result": result})
-
-    except Exception as ex:
-        print("動画アップロード時エラー:", ex)
-        return jsonify({"error": f"動画アップロードに失敗しました: {str(ex)}"}), 500
 
 @app.route('/videos/my', methods=['GET'])
 @login_required
