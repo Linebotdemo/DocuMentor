@@ -409,7 +409,7 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
 # Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
 ###############################################################################
 @app.route("/videos/<int:video_id>/view", methods=["GET"])
-@jwt_required()
+@jwt_required
 def view_video_status(video_id):
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
@@ -418,9 +418,6 @@ def view_video_status(video_id):
     if not video:
         return jsonify({"error": "動画が見つかりません"}), 404
 
-    # デバッグログ
-    print(f"[動画確認] video.user_id={video.user_id}, current_user_id={user_id}, role={user.role}")
-
     if video.user_id != user_id and user.role != 'env':
         return jsonify({"error": "アクセス権がありません"}), 403
 
@@ -428,6 +425,7 @@ def view_video_status(video_id):
         "summary_text": video.summary_text or "要約がありません",
         "quiz_text": video.quiz_text or "クイズがありません"
     })
+
 
 
 def process_video(video, generation_mode="manual"):
