@@ -410,7 +410,7 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
 ###############################################################################
 @app.route("/videos/<int:video_id>/view", methods=["GET"])
 @jwt_required()
-def view_video(video_id):
+def view_video_status(video_id):
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     video = Video.query.get(video_id)
