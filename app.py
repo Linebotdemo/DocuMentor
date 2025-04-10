@@ -434,9 +434,14 @@ def view_video_status(video_id):
 
 def process_video(video, generation_mode="manual"):
     try:
-        # Whisper文字起こし（外部APIを叩く）
         whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
+        print(f"[DEBUG] Whisper API URL: {whisper_api_url}")
+        print(f"[DEBUG] Sending video URL to Whisper: {video.cloudinary_url}")
+
         response = requests.post(whisper_api_url, json={"video_url": video.cloudinary_url}, timeout=300)
+
+        print(f"[DEBUG] Whisper Response: {response.status_code} / {response.text}")
+
         if response.status_code == 200:
             result = response.json()
             video.whisper_text = result.get("text", "文字起こしが空でした")
@@ -444,7 +449,9 @@ def process_video(video, generation_mode="manual"):
             video.whisper_text = f"Transcription failed: {response.text}"
 
     except Exception as e:
+        print(f"[ERROR] Whisperリクエスト失敗: {str(e)}")
         video.whisper_text = f"Transcription failed: {str(e)}"
+
 
     # OCR結果を取得
     ocr_text = video.ocr_text if video.ocr_text else ""
