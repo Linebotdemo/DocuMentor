@@ -1108,6 +1108,24 @@ def view_video(video_id):
         "quiz_text": quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
     })
 
+@app.route("/videos/company", methods=["GET"])
+@jwt_required
+def get_company_videos():
+    company_id = g.current_user.company_id
+    videos = Video.query.filter_by(company_id=company_id).order_by(Video.created_at.desc()).all()
+    return jsonify({
+        "videos": [
+            {
+                "id": v.id,
+                "title": v.title,
+                "created_at": to_jst(v.created_at)
+            }
+            for v in videos
+        ]
+    })
+
+
+
 ###############################################################################
 # ステップ画像アップロード（まだクラウド対応したい場合は書き換え可）
 ###############################################################################
