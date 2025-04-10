@@ -521,6 +521,35 @@ def process_video(video, generation_mode="manual"):
     db.session.commit()
 
 
+
+# 🔽 app.py
+
+from flask import Flask, request, jsonify
+from tasks import transcribe_video_task
+from celery.result import AsyncResult  # 必要なら
+
+@app.route("/videos/<int:video_id>/analyze", methods=["POST"])
+def analyze_video(video_id):
+    video = Video.query.get(video_id)
+
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    # ここで非同期タスク送信
+    task = transcribe_video_task.delay(video.cloudinary_url, video.id)
+
+    try:
+        # 同期的に結果を取得（3分待つ）
+        result = task.get(timeout=180)
+
+        # JSON文字列を元に戻す
+        from json import loads
+        return jsonify(loads(result))
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 ###############################################################################
 # Favicon
 ###############################################################################
@@ -1016,24 +1045,6 @@ def get_my_videos():
             for v in videos
         ]
     })
-
-@celery.task
-def transcribe_video_task(video_url, video_id):
-    print(f"[DEBUG] タスク実行開始: video_url={video_url}, video_id={video_id}")
-    
-    try:
-        video = Video.query.get(video_id)
-        if not video:
-            print(f"[ERROR] video_id={video_id} が見つかりません")
-            return None
-
-        # Whisper＋GPT要約＋クイズ生成を一括で行う
-        process_video(video)
-
-        return video.whisper_text or "文字起こし結果なし"
-    except Exception as e:
-        print(f"[ERROR] Whisperタスク内エラー: {str(e)}")
-        return None
 
 
 @app.route('/videos/<int:video_id>/view', methods=['GET'])
