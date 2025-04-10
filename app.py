@@ -1,104 +1,96 @@
-    import os
-    import base64
-    import json
-    import random
-    import string
-    from io import BytesIO
-    from datetime import datetime, timedelta
-    from functools import wraps
-    from celery import Celery
-    #from app import db, Video
-    from tasks import transcribe_video_task
+import os
+import base64
+import json
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timedelta
+from functools import wraps
+from celery import Celery
+# from app import db, Video
+from tasks import transcribe_video_task
 
-    from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
-    from flask_sqlalchemy import SQLAlchemy
-    from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-    from werkzeug.security import generate_password_hash, check_password_hash
-    from werkzeug.utils import secure_filename
-    from PIL import Image
-    from celery_app import celery
-    import pytesseract
+from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from PIL import Image
+from celery_app import celery
+import pytesseract
 
-    import os
-    import cloudinary
-    import cloudinary.uploader
-    import pytz
-    import pdfkit
-    import openai
-    import jwt
-    import requests
+import cloudinary
+import cloudinary.uploader
+import pytz
+import pdfkit
+import openai
+import jwt
+import requests
 
-    # dotenv読み込み
-    from dotenv import load_dotenv
-    load_dotenv()
+# dotenv読み込み
+from dotenv import load_dotenv
+load_dotenv()
 
-    # LINE Messaging API 用（公式アカウント）
-    LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-    LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
+# LINE Messaging API 用（公式アカウント）
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_CHANNEL_SECRET:
     raise ValueError("LINE_CHANNEL_ACCESS_TOKEN または LINE_CHANNEL_SECRET が設定されていません。")
 
-    from linebot import LineBotApi, WebhookHandler
-    from linebot.models import TextMessage, TextSendMessage, MessageEvent
+from linebot import LineBotApi, WebhookHandler
+from linebot.models import TextMessage, TextSendMessage, MessageEvent
 
+JST = pytz.timezone("Asia/Tokyo")
 
-    JST = pytz.timezone("Asia/Tokyo")
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
+# PostgreSQLなどに接続する想定（Render用）
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///docu_mentor.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # PostgreSQLなどに接続する想定（Render用）
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///docu_mentor.db')
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# 一時フォルダとして使用（OCRなどに使う）
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    # 一時フォルダとして使用（OCRなどに使う）
-    app.config['UPLOAD_FOLDER'] = 'static/uploads'
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['CELERY_BROKER_URL'] = os.getenv("REDIS_URL", "redis://localhost:6380/0")
+app.config['CELERY_RESULT_BACKEND'] = app.config['CELERY_BROKER_URL']
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-jwt-secret')
 
-
-
-
-    app.config['CELERY_BROKER_URL'] = os.getenv("REDIS_URL", "redis://localhost:6380/0")
-    app.config['CELERY_RESULT_BACKEND'] = app.config['CELERY_BROKER_URL']
-    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-jwt-secret')
-
-    # Cloudinary初期化
-    cloudinary.config(
+# Cloudinary初期化
+cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
-    )
+)
 
-    app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', 'your-openai-api-key')
-    openai.api_key = app.config['OPENAI_API_KEY']
-    conversation_states = {}
+app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', 'your-openai-api-key')
+openai.api_key = app.config['OPENAI_API_KEY']
+conversation_states = {}
 
-    # PDFKit設定
-    wkhtmltopdf_path = os.getenv("WKHTMLTOPDF_PATH", "C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe")
-    pdfkit_config = pdfkit.configuration(wkhtmltopdf=wkhtmltopdf_path) if os.path.exists(wkhtmltopdf_path) else None
+# PDFKit設定
+wkhtmltopdf_path = os.getenv("WKHTMLTOPDF_PATH", "C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe")
+pdfkit_config = pdfkit.configuration(wkhtmltopdf=wkhtmltopdf_path) if os.path.exists(wkhtmltopdf_path) else None
 
-    db = SQLAlchemy(app)
-    login_manager = LoginManager(app)
-    login_manager.login_view = 'login_route'
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login_route'
 
-    ENV_USERS = {
+ENV_USERS = {
     os.getenv('ADMIN_USERNAME', 'admin'): {
         "password": os.getenv('ADMIN_PASSWORD', 'admin123'),
         "role": "env"
     }
-    }
+}
 
-    line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-    line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-
-
-
-    ###############################################################################
-    # DBモデル
-    ###############################################################################
-    class User(UserMixin, db.Model):
+###############################################################################
+# DBモデル
+###############################################################################
+class User(UserMixin, db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
@@ -125,7 +117,7 @@
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    class Company(db.Model):
+class Company(db.Model):
     __tablename__ = 'company'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -136,13 +128,11 @@
     users = db.relationship('User', backref='company', lazy=True)
     videos = db.relationship('Video', backref='company', lazy=True)
 
-    # ▼ 動画ファイルはCloudinaryで保存し、cloudinary_urlで管理
-    class Video(db.Model):
+class Video(db.Model):
     __tablename__ = 'video'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     cloudinary_url = db.Column(db.String(500), nullable=False)
-
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -158,7 +148,7 @@
     quizzes = db.relationship('Quiz', backref='video', lazy=True, cascade="all, delete-orphan")
     progress = db.relationship('Progress', backref='video', lazy=True)
 
-    class VideoStep(db.Model):
+class VideoStep(db.Model):
     __tablename__ = 'video_step'
     id = db.Column(db.Integer, primary_key=True)
     video_id = db.Column(db.Integer, db.ForeignKey('video.id'), nullable=False)
@@ -170,15 +160,14 @@
 
     attachments = db.relationship('StepAttachment', backref='step', lazy=True, cascade="all, delete-orphan")
 
-    # ▼ ステップ添付画像もcloudinary_urlで管理
-    class StepAttachment(db.Model):
+class StepAttachment(db.Model):
     __tablename__ = 'step_attachment'
     id = db.Column(db.Integer, primary_key=True)
     step_id = db.Column(db.Integer, db.ForeignKey('video_step.id'), nullable=False)
     cloudinary_url = db.Column(db.String(500), nullable=False)
     filetype = db.Column(db.String(50), nullable=False)
 
-    class Quiz(db.Model):
+class Quiz(db.Model):
     __tablename__ = 'quiz'
     id = db.Column(db.Integer, primary_key=True)
     video_id = db.Column(db.Integer, db.ForeignKey('video.id'), nullable=False)
@@ -188,7 +177,7 @@
     questions = db.relationship('QuizQuestion', backref='quiz', lazy=True, cascade="all, delete-orphan")
     submissions = db.relationship('QuizSubmission', backref='quiz', lazy=True)
 
-    class QuizQuestion(db.Model):
+class QuizQuestion(db.Model):
     __tablename__ = 'quiz_question'
     id = db.Column(db.Integer, primary_key=True)
     quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
@@ -198,14 +187,14 @@
 
     options = db.relationship('QuizOption', backref='question', lazy=True, cascade="all, delete-orphan")
 
-    class QuizOption(db.Model):
+class QuizOption(db.Model):
     __tablename__ = 'quiz_option'
     id = db.Column(db.Integer, primary_key=True)
     question_id = db.Column(db.Integer, db.ForeignKey('quiz_question.id'), nullable=False)
     option_text = db.Column(db.Text, nullable=False)
     is_correct = db.Column(db.Boolean, default=False)
 
-    class QuizSubmission(db.Model):
+class QuizSubmission(db.Model):
     __tablename__ = 'quiz_submission'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -215,7 +204,7 @@
 
     answers = db.relationship('QuizAnswer', backref='submission', lazy=True, cascade="all, delete-orphan")
 
-    class QuizAnswer(db.Model):
+class QuizAnswer(db.Model):
     __tablename__ = 'quiz_answer'
     id = db.Column(db.Integer, primary_key=True)
     submission_id = db.Column(db.Integer, db.ForeignKey('quiz_submission.id'), nullable=False)
@@ -224,7 +213,7 @@
     option_id = db.Column(db.Integer, db.ForeignKey('quiz_option.id'), nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
 
-    class Progress(db.Model):
+class Progress(db.Model):
     __tablename__ = 'progress'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -232,7 +221,7 @@
     completion_percentage = db.Column(db.Float, default=0.0)
     last_watched = db.Column(db.DateTime, default=datetime.utcnow)
 
-    class LogEntry(db.Model):
+class LogEntry(db.Model):
     __tablename__ = 'log_entry'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -241,7 +230,7 @@
     ip_address = db.Column(db.String(50), nullable=True)
     details = db.Column(db.Text, nullable=True)
 
-    class Template(db.Model):
+class Template(db.Model):
     __tablename__ = 'template'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -249,7 +238,7 @@
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    class PlaybackLog(db.Model):
+class PlaybackLog(db.Model):
     __tablename__ = 'playback_log'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -258,8 +247,7 @@
     playback_position = db.Column(db.Float, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # ▼ PDFや文書はcloudinary_urlで保持
-    class Document(db.Model):
+class Document(db.Model):
     __tablename__ = 'document'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
@@ -271,7 +259,7 @@
     line_share_flag = db.Column(db.Boolean, default=False)
     company_id = db.Column(db.Integer, db.ForeignKey('company.id'), nullable=True)
 
-    class PDFViewLog(db.Model):
+class PDFViewLog(db.Model):
     __tablename__ = 'pdf_view_log'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -279,7 +267,7 @@
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     ip_address = db.Column(db.String(50), nullable=True)
 
-    class SearchLog(db.Model):
+class SearchLog(db.Model):
     __tablename__ = 'search_log'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -287,7 +275,7 @@
     found_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    class Notification(db.Model):
+class Notification(db.Model):
     __tablename__ = 'notification'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -295,20 +283,17 @@
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     read_flag = db.Column(db.Boolean, default=False)
 
-    @login_manager.user_loader
-    def load_user(user_id):
+@login_manager.user_loader
+def load_user(user_id):
     return User.query.get(int(user_id))
 
-    @app.route('/force_create_tables')
-    def force_create_tables():
+@app.route('/force_create_tables')
+def force_create_tables():
     with app.app_context():
         db.create_all()
     return "Tables created!"
 
-
-
-
-    def make_celery(app):
+def make_celery(app):
     celery = Celery(
         app.import_name,
         broker=app.config['CELERY_BROKER_URL'],
@@ -324,14 +309,13 @@
     celery.Task = ContextTask
     return celery
 
-
-    ###############################################################################
-    # ユーティリティ
-    ###############################################################################
-    def generate_login_code():
+###############################################################################
+# ユーティリティ
+###############################################################################
+def generate_login_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-    def to_jst(dt_utc):
+def to_jst(dt_utc):
     try:
         if dt_utc is None:
             return None
@@ -340,12 +324,12 @@
         print(f"[JST変換エラー] {e}")
         return None
 
-    def get_request_data():
+def get_request_data():
     if request.is_json:
         return request.get_json()
     return request.form
 
-    def generate_jwt(user):
+def generate_jwt(user):
     payload = {
         "user_id": user.id,
         "username": user.username,
@@ -355,7 +339,7 @@
     token = jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm="HS256")
     return token
 
-    def jwt_required(f):
+def jwt_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get("Authorization", None)
@@ -373,7 +357,7 @@
         return f(*args, **kwargs)
     return decorated
 
-    def generate_temp_pdf_token(doc_id):
+def generate_temp_pdf_token(doc_id):
     payload = {
         "doc_id": doc_id,
         "exp": datetime.utcnow() + timedelta(hours=12)
@@ -381,11 +365,10 @@
     token = jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm="HS256")
     return token
 
-    def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor", public_id_prefix=None):
+def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor", public_id_prefix=None):
     try:
         if not public_id_prefix:
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-
         result = cloudinary.uploader.upload(
             file_stream,
             resource_type=resource_type,
@@ -400,10 +383,10 @@
         print(f"Cloudinary upload error: {e}")
         return None
 
-    ###############################################################################
-    # Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
-    ###############################################################################
-    def process_video(video, generation_mode="manual"):
+###############################################################################
+# Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
+###############################################################################
+def process_video(video, generation_mode="manual"):
     try:
         # Whisper文字起こし（外部APIを叩く）
         whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
@@ -413,7 +396,6 @@
             video.whisper_text = result.get("text", "文字起こしが空でした")
         else:
             video.whisper_text = f"Transcription failed: {response.text}"
-
     except Exception as e:
         video.whisper_text = f"Transcription failed: {str(e)}"
 
@@ -478,20 +460,19 @@
 
     db.session.commit()
 
-
-    ###############################################################################
-    # Favicon
-    ###############################################################################
-    @app.route('/favicon.ico')
-    def favicon():
+###############################################################################
+# Favicon
+###############################################################################
+@app.route('/favicon.ico')
+def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
-                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-    ###############################################################################
-    # LINE Webhook
-    ###############################################################################
-    @app.route('/webhook', methods=['POST'])
-    def line_webhook():
+###############################################################################
+# LINE Webhook
+###############################################################################
+@app.route('/webhook', methods=['POST'])
+def line_webhook():
     body = request.get_data(as_text=True)
     signature = request.headers.get('X-Line-Signature')
     try:
@@ -501,8 +482,8 @@
         return jsonify({"error": str(e)}), 400
     return 'OK', 200
 
-    @line_handler.add(MessageEvent, message=TextMessage)
-    def handle_line_text(event):
+@line_handler.add(MessageEvent, message=TextMessage)
+def handle_line_text(event):
     global conversation_states
 
     line_user_id = event.source.user_id
@@ -575,8 +556,8 @@
             company = Company.query.get(user.company_id)
             if company:
                 reply = (f"あなたの所属企業は【{company.name}】（企業コード: {company.login_code}）\n"
-                            f"部署: {user.department}\n"
-                            f"表示名: {user.line_display_name}")
+                         f"部署: {user.department}\n"
+                         f"表示名: {user.line_display_name}")
             else:
                 reply = "所属企業情報が不明です。"
         else:
@@ -609,9 +590,9 @@
             user.line_display_name = new_display_name
             db.session.commit()
             reply = (f"所属企業が変更されました。\n"
-                        f"新しい企業: {company.name}（企業コード: {company.login_code}）\n"
-                        f"部署: {department}\n"
-                        f"表示名: {new_display_name}")
+                     f"新しい企業: {company.name}（企業コード: {company.login_code}）\n"
+                     f"部署: {department}\n"
+                     f"表示名: {new_display_name}")
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         else:
             line_bot_api.reply_message(
@@ -629,10 +610,10 @@
         return
 
     elif state.get("expected") == "pdf_option":
-        ...
+        # ... （以下の実装省略部分もそのまま保持）
         return
     elif state.get("expected") == "pdf_keyword":
-        ...
+        # ... （以下の実装省略部分もそのまま保持）
         return
 
     # 5) 既定応答
@@ -643,7 +624,7 @@
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=default_reply))
 
-    # "変更"
+    # "変更"（再度）
     if text.lower() == "変更":
         conversation_states[line_user_id] = {"expected": "change_request"}
         prompt_text = ("所属企業変更を開始します。\n以下の形式で送信してください。\n例: ABC123 営業部 新しい表示名")
@@ -734,48 +715,48 @@
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=default_reply))
 
-    ###############################################################################
-    # LINE連携無効
-    ###############################################################################
-    @app.route("/line/login", methods=["GET"])
-    def line_login():
+###############################################################################
+# LINE連携無効
+###############################################################################
+@app.route("/line/login", methods=["GET"])
+def line_login():
     return jsonify({"error": "LINEログイン機能は無効です。"}), 403
 
-    @app.route("/line/callback", methods=["GET", "POST"])
-    def line_callback():
+@app.route("/line/callback", methods=["GET", "POST"])
+def line_callback():
     return jsonify({"error": "LINEログイン機能は無効です. "}), 403
 
-    @app.route("/line/register_info", methods=["POST"])
-    @jwt_required
-    def line_register_info():
+@app.route("/line/register_info", methods=["POST"])
+@jwt_required
+def line_register_info():
     return jsonify({"error": "LINE連携機能（登録）は無効です."}), 403
 
-    @app.route("/line/link", methods=["POST"])
-    @jwt_required
-    def line_link():
+@app.route("/line/link", methods=["POST"])
+@jwt_required
+def line_link():
     return jsonify({"error": "LINE連携機能（リンク）は無効です."}), 403
 
-    @app.route("/line/pending", methods=["GET"])
-    @jwt_required
-    def line_pending():
+@app.route("/line/pending", methods=["GET"])
+@jwt_required
+def line_pending():
     return jsonify({"error": "LINE連携機能（申請一覧）は無効です."}), 403
 
-    @app.route("/line/approve", methods=["POST"])
-    @jwt_required
-    def line_approve():
+@app.route("/line/approve", methods=["POST"])
+@jwt_required
+def line_approve():
     return jsonify({"error": "LINE連携機能（承認）は無効です."}), 403
 
-    @app.route("/line/reject", methods=["POST"])
-    @jwt_required
-    def line_reject():
+@app.route("/line/reject", methods=["POST"])
+@jwt_required
+def line_reject():
     return jsonify({"error": "LINE連携機能（拒否）は無効です."}), 403
 
-    ###############################################################################
-    # ブロック、解除、承認
-    ###############################################################################
-    @app.route('/line/users/<int:user_id>/block', methods=['POST'])
-    @jwt_required
-    def block_line_user(user_id):
+###############################################################################
+# ブロック、解除、承認
+###############################################################################
+@app.route('/line/users/<int:user_id>/block', methods=['POST'])
+@jwt_required
+def block_line_user(user_id):
     if g.current_user.role not in ['env', 'admin']:
         return jsonify({"error": "Access denied"}), 403
     target = User.query.get_or_404(user_id)
@@ -786,9 +767,9 @@
     db.session.commit()
     return jsonify({"message": f"{target.line_display_name or target.username} をブロックしました"})
 
-    @app.route('/line/users/<int:user_id>/unblock', methods=['POST'])
-    @jwt_required
-    def unblock_line_user(user_id):
+@app.route('/line/users/<int:user_id>/unblock', methods=['POST'])
+@jwt_required
+def unblock_line_user(user_id):
     if g.current_user.role not in ['env', 'admin']:
         return jsonify({"error": "Access denied"}), 403
     target = User.query.get_or_404(user_id)
@@ -799,9 +780,9 @@
     db.session.commit()
     return jsonify({"message": f"{target.line_display_name or target.username} のブロックを解除しました"})
 
-    @app.route('/line/users/<int:user_id>/approve', methods=['POST'])
-    @jwt_required
-    def approve_line_user(user_id):
+@app.route('/line/users/<int:user_id>/approve', methods=['POST'])
+@jwt_required
+def approve_line_user(user_id):
     if g.current_user.role not in ['env', 'admin']:
         return jsonify({"error": "Access denied"}), 403
     target = User.query.get_or_404(user_id)
@@ -812,12 +793,12 @@
     db.session.commit()
     return jsonify({"message": f"{target.line_display_name or target.username} を承認しました"})
 
-    ###############################################################################
-    # LINEユーザー一覧
-    ###############################################################################
-    @app.route('/line/users', methods=['GET'])
-    @jwt_required
-    def list_line_users():
+###############################################################################
+# LINEユーザー一覧
+###############################################################################
+@app.route('/line/users', methods=['GET'])
+@jwt_required
+def list_line_users():
     if g.current_user.role not in ['env', 'admin']:
         return jsonify({"error": "Access denied"}), 403
     if g.current_user.role == 'env':
@@ -839,9 +820,8 @@
         })
     return jsonify({"users": result})
 
-
-    @app.route("/videos/<int:video_id>/update_transcription", methods=["POST"])
-    def update_transcription(video_id):
+@app.route("/videos/<int:video_id>/update_transcription", methods=["POST"])
+def update_transcription(video_id):
     api_key = request.headers.get("Authorization", "").replace("Bearer ", "")
     if api_key != os.getenv("INTERNAL_API_KEY"):
         return jsonify({"error": "Unauthorized"}), 401
@@ -859,13 +839,12 @@
     db.session.commit()
     return jsonify({"message": "Transcription updated"})
 
-
-    ###############################################################################
-    # PDFリンク共有
-    ###############################################################################
-    @app.route('/line/share_pdf', methods=['POST'])
-    @jwt_required
-    def line_share_pdf():
+###############################################################################
+# PDFリンク共有
+###############################################################################
+@app.route('/line/share_pdf', methods=['POST'])
+@jwt_required
+def line_share_pdf():
     if g.current_user.role not in ['env', 'admin']:
         return jsonify({"error": "Access denied"}), 403
     data = get_request_data()
@@ -896,12 +875,12 @@
             results.append(f"Failed to send to {user.line_display_name or user.username}: {str(e)}")
     return jsonify({"message": "PDF link share executed", "details": results})
 
-    ###############################################################################
-    # 動画アップロード（Cloudinary対応）
-    ###############################################################################
-    @app.route("/videos/upload", methods=["POST"])
-    @jwt_required
-    def upload_video():
+###############################################################################
+# 動画アップロード（Cloudinary対応）
+###############################################################################
+@app.route("/videos/upload", methods=["POST"])
+@jwt_required
+def upload_video():
     try:
         user_id = g.current_user.id
         title = request.form.get("title") or "Untitled Video"
@@ -967,11 +946,13 @@
             print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
 
         return jsonify({"message": "アップロード成功", "video_id": video.id})
+    except Exception as ex:
+        print("動画アップロードエラー:", ex)
+        return jsonify({"error": str(ex)}), 500
 
-
-    @app.route('/videos/my', methods=['GET'])
-    @login_required
-    def get_my_videos():
+@app.route('/videos/my', methods=['GET'])
+@login_required
+def get_my_videos():
     user_id = current_user.id
     videos = Video.query.filter_by(user_id=user_id).order_by(Video.created_at.desc()).all()
     return jsonify({
@@ -985,12 +966,9 @@
         ]
     })
 
-
-
-
-    @app.route('/videos/<int:video_id>/view', methods=['GET'])
-    @jwt_required
-    def view_video(video_id):
+@app.route('/videos/<int:video_id>/view', methods=['GET'])
+@jwt_required
+def view_video(video_id):
     video = Video.query.get_or_404(video_id)
     if g.current_user.role != 'env':
         if video.company_id != g.current_user.company_id:
@@ -1005,12 +983,12 @@
         "quiz_text": quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
     })
 
-    ###############################################################################
-    # ステップ画像アップロード（まだクラウド対応したい場合は書き換え可）
-    ###############################################################################
-    @app.route('/videos/<int:video_id>/steps/<int:step_id>/upload_image', methods=['POST'])
-    @login_required
-    def upload_step_image(video_id, step_id):
+###############################################################################
+# ステップ画像アップロード（まだクラウド対応したい場合は書き換え可）
+###############################################################################
+@app.route('/videos/<int:video_id>/steps/<int:step_id>/upload_image', methods=['POST'])
+@login_required
+def upload_step_image(video_id, step_id):
     step = VideoStep.query.filter_by(id=step_id, video_id=video_id).first()
     if not step:
         return jsonify({"error": "ステップが見つかりません"}), 404
@@ -1036,9 +1014,9 @@
 
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
 
-    @app.route('/videos/<int:video_id>/steps_with_images', methods=['GET'])
-    @login_required
-    def get_steps_with_images(video_id):
+@app.route('/videos/<int:video_id>/steps_with_images', methods=['GET'])
+@login_required
+def get_steps_with_images(video_id):
     video = Video.query.get_or_404(video_id)
     if current_user.role != 'env' and video.company_id != current_user.company_id:
         return jsonify({"error": "他社の動画は閲覧できません"}), 403
@@ -1061,12 +1039,12 @@
         })
     return jsonify({"steps": result})
 
-    ###############################################################################
-    # 動画解析
-    ###############################################################################
-    @app.route('/videos/<int:video_id>/analyze', methods=['GET'])
-    @jwt_required
-    def analyze_video(video_id):
+###############################################################################
+# 動画解析
+###############################################################################
+@app.route('/videos/<int:video_id>/analyze', methods=['GET'])
+@jwt_required
+def analyze_video(video_id):
     try:
         video = Video.query.get_or_404(video_id)
         if g.current_user.role != 'env' and video.company_id != g.current_user.company_id:
@@ -1123,17 +1101,16 @@
         )
         analysis_text = response.choices[0].message.content.strip()
         return jsonify({"analysis": analysis_text})
-
     except Exception as e:
         print("動画解析エラー:", e)
         return jsonify({"error": str(e)}), 500
 
-    ###############################################################################
-    # ENV企業管理
-    ###############################################################################
-    @app.route('/companies/list', methods=['GET'])
-    @jwt_required
-    def list_companies():
+###############################################################################
+# ENV企業管理
+###############################################################################
+@app.route('/companies/list', methods=['GET'])
+@jwt_required
+def list_companies():
     if g.current_user.role != "env":
         return jsonify({"error": "Access denied"}), 403
     companies = Company.query.all()
@@ -1148,9 +1125,9 @@
         })
     return jsonify({"companies": result})
 
-    @app.route('/companies/add', methods=['POST'])
-    @jwt_required
-    def add_company():
+@app.route('/companies/add', methods=['POST'])
+@jwt_required
+def add_company():
     if g.current_user.role != "env":
         return jsonify({"error": "Access denied"}), 403
     data = get_request_data()
@@ -1163,9 +1140,9 @@
     db.session.commit()
     return jsonify({"message": "企業を追加しました", "login_code": login_code})
 
-    @app.route('/companies/<int:company_id>/update', methods=['POST'])
-    @jwt_required
-    def update_company(company_id):
+@app.route('/companies/<int:company_id>/update', methods=['POST'])
+@jwt_required
+def update_company(company_id):
     if g.current_user.role != "env":
         return jsonify({"error": "Access denied"}), 403
     company = Company.query.get_or_404(company_id)
@@ -1179,9 +1156,9 @@
     db.session.commit()
     return jsonify({"message": "企業情報を更新しました"})
 
-    @app.route('/companies/<int:company_id>/update_subscription', methods=['POST'])
-    @jwt_required
-    def update_subscription(company_id):
+@app.route('/companies/<int:company_id>/update_subscription', methods=['POST'])
+@jwt_required
+def update_subscription(company_id):
     if g.current_user.role != "env":
         return jsonify({"error": "Access denied"}), 403
     company = Company.query.get_or_404(company_id)
@@ -1192,9 +1169,9 @@
         "subscription_end": to_jst(company.updated_at + timedelta(days=30))
     })
 
-    @app.route('/companies/<int:company_id>/delete', methods=['POST'])
-    @jwt_required
-    def delete_company(company_id):
+@app.route('/companies/<int:company_id>/delete', methods=['POST'])
+@jwt_required
+def delete_company(company_id):
     if g.current_user.role != "env":
         return jsonify({"error": "Access denied"}), 403
     company = Company.query.get_or_404(company_id)
@@ -1202,12 +1179,12 @@
     db.session.commit()
     return jsonify({"message": "企業を削除しました"})
 
-    ###############################################################################
-    # PDF関連 (Cloudinary対応)
-    ###############################################################################
-    @app.route('/documents/upload', methods=['POST'])
-    @jwt_required
-    def upload_document():
+###############################################################################
+# PDF関連 (Cloudinary対応)
+###############################################################################
+@app.route('/documents/upload', methods=['POST'])
+@jwt_required
+def upload_document():
     try:
         if g.current_user.role not in ['env', 'admin']:
             return jsonify({"error": "Access denied"}), 403
@@ -1245,9 +1222,9 @@
         print("PDFアップロードエラー:", ex)
         return jsonify({"error": f"PDFアップロードに失敗しました: {str(ex)}"}), 500
 
-    @app.route('/documents/<int:doc_id>/update', methods=['POST'])
-    @jwt_required
-    def update_document(doc_id):
+@app.route('/documents/<int:doc_id>/update', methods=['POST'])
+@jwt_required
+def update_document(doc_id):
     try:
         if g.current_user.role not in ['env', 'admin']:
             return jsonify({"error": "Access denied"}), 403
@@ -1273,9 +1250,9 @@
         print("PDF更新エラー:", ex)
         return jsonify({"error": f"PDF更新に失敗しました: {str(ex)}"}), 500
 
-    @app.route('/documents/list', methods=['GET'])
-    @jwt_required
-    def list_documents():
+@app.route('/documents/list', methods=['GET'])
+@jwt_required
+def list_documents():
     try:
         if g.current_user.role == 'env':
             query = Document.query
@@ -1295,7 +1272,6 @@
                 "department": doc.department,
                 "category": doc.category,
                 "created_at": to_jst(doc.created_at),
-                # cloudinary_urlを返す
                 "cloudinary_url": doc.cloudinary_url
             })
         return jsonify({"documents": result})
@@ -1303,9 +1279,9 @@
         print("PDF一覧取得エラー:", ex)
         return jsonify({"error": f"PDF一覧取得でエラー: {str(ex)}"}), 500
 
-    @app.route('/documents/publish', methods=['POST'])
-    @jwt_required
-    def publish_document():
+@app.route('/documents/publish', methods=['POST'])
+@jwt_required
+def publish_document():
     """
     HTMLからPDFを生成し、一時的に保存した後にCloudinaryへアップロードする形にしてもよい。
     今回はローカル保存→DBにfilename保存しているが、Cloudinaryに乗せ換えるなら同様にupload_to_cloudinary()を利用。
@@ -1327,27 +1303,27 @@
         html = f"""
         <html>
             <head>
-            <meta charset="utf-8">
-            <style>
-                body {{
-                font-family: "Noto Sans JP", sans-serif;
-                margin: 20px;
-                line-height: 1.6;
-                white-space: pre-wrap;
-                }}
-                h1 {{
-                font-size: 1.5em;
-                margin-bottom: 0.5em;
-                }}
-                .content {{
-                white-space: pre-wrap;
-                }}
-            </style>
-            <title>{title}</title>
+                <meta charset="utf-8">
+                <style>
+                    body {{
+                        font-family: "Noto Sans JP", sans-serif;
+                        margin: 20px;
+                        line-height: 1.6;
+                        white-space: pre-wrap;
+                    }}
+                    h1 {{
+                        font-size: 1.5em;
+                        margin-bottom: 0.5em;
+                    }}
+                    .content {{
+                        white-space: pre-wrap;
+                    }}
+                </style>
+                <title>{title}</title>
             </head>
             <body>
-            <h1>{title}</h1>
-            <div class="content">{content}</div>
+                <h1>{title}</h1>
+                <div class="content">{content}</div>
             </body>
         </html>
         """
@@ -1359,7 +1335,7 @@
         with open(temp_pdf_path, "wb") as f:
             f.write(pdf_data)
 
-        # Cloudinaryへアップ
+        # Cloudinaryへアップロード
         pdf_url = None
         with open(temp_pdf_path, "rb") as f:
             pdf_url = upload_to_cloudinary(
@@ -1393,9 +1369,9 @@
         print("PDF発行エラー:", ex)
         return jsonify({"error": f"PDF生成に失敗しました: {str(ex)}"}), 500
 
-    @app.route('/videos/<int:video_id>/summary_pdf', methods=['GET'])
-    @login_required
-    def summary_pdf_route(video_id):
+@app.route('/videos/<int:video_id>/summary_pdf', methods=['GET'])
+@login_required
+def summary_pdf_route(video_id):
     video = Video.query.get_or_404(video_id)
     if current_user.role != 'env' and video.company_id != current_user.company_id:
         return jsonify({"error": "他社の動画PDF生成はできません"}), 403
@@ -1405,23 +1381,23 @@
         html = f"""
         <html>
             <head>
-            <meta charset="utf-8">
-            <style>
-                body {{
-                font-family: "Noto Sans JP", sans-serif;
-                margin: 20px;
-                line-height: 1.6;
-                white-space: pre-wrap;
-                }}
-                p {{
-                white-space: pre-wrap;
-                }}
-            </style>
-            <title>Summary PDF</title>
+                <meta charset="utf-8">
+                <style>
+                    body {{
+                        font-family: "Noto Sans JP", sans-serif;
+                        margin: 20px;
+                        line-height: 1.6;
+                        white-space: pre-wrap;
+                    }}
+                    p {{
+                        white-space: pre-wrap;
+                    }}
+                </style>
+                <title>Summary PDF</title>
             </head>
             <body>
-            <h1>{video.title} 要約</h1>
-            <p>{video.summary_text}</p>
+                <h1>{video.title} 要約</h1>
+                <p>{video.summary_text}</p>
             </body>
         </html>
         """
@@ -1433,9 +1409,9 @@
     except Exception as e:
         return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
 
-    @app.route('/videos/<int:video_id>/quiz_pdf', methods=['GET'])
-    @login_required
-    def quiz_pdf_route(video_id):
+@app.route('/videos/<int:video_id>/quiz_pdf', methods=['GET'])
+@login_required
+def quiz_pdf_route(video_id):
     quiz = Quiz.query.filter_by(video_id=video_id).first()
     if not quiz or not quiz.auto_quiz_text:
         return jsonify({"error": "No auto-generated quiz available."}), 400
@@ -1446,23 +1422,23 @@
         html = f"""
         <html>
             <head>
-            <meta charset="utf-8">
-            <style>
-                body {{
-                font-family: "Noto Sans JP", sans-serif;
-                margin: 20px;
-                line-height: 1.6;
-                white-space: pre-wrap;
-                }}
-                p {{
-                white-space: pre-wrap;
-                }}
-            </style>
-            <title>Quiz PDF</title>
+                <meta charset="utf-8">
+                <style>
+                    body {{
+                        font-family: "Noto Sans JP", sans-serif;
+                        margin: 20px;
+                        line-height: 1.6;
+                        white-space: pre-wrap;
+                    }}
+                    p {{
+                        white-space: pre-wrap;
+                    }}
+                </style>
+                <title>Quiz PDF</title>
             </head>
             <body>
-            <h1>Quiz for Video {video_id}</h1>
-            <p>{quiz.auto_quiz_text}</p>
+                <h1>Quiz for Video {video_id}</h1>
+                <p>{quiz.auto_quiz_text}</p>
             </body>
         </html>
         """
@@ -1474,11 +1450,11 @@
     except Exception as e:
         return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
 
-    ###############################################################################
-    # PDF閲覧 (Cloudinary版の場合はURLを直接返す or ダウンロード)
-    ###############################################################################
-    @app.route('/documents/<int:doc_id>/view_pdf', methods=['GET'])
-    def document_view_pdf(doc_id):
+###############################################################################
+# PDF閲覧 (Cloudinary版の場合はURLを直接返す or ダウンロード)
+###############################################################################
+@app.route('/documents/<int:doc_id>/view_pdf', methods=['GET'])
+def document_view_pdf(doc_id):
     """
     トークン検証後、Document.cloudinary_urlを直接返すか
     PDFバイナリをダウンロードして返すかのどちらか。
@@ -1495,13 +1471,8 @@
         return jsonify({"error": f"Invalid token: {str(e)}"}), 401
 
     doc = Document.query.get_or_404(doc_id)
-    # ここではCloudinaryのURLを持っているので、直接リダイレクトでもよい
-    # 例：redirect(doc.cloudinary_url)
-    # あるいはダウンロード→返却も可
-    # ここではサンプルとして元ローカルコードを残すが、Cloudinaryで一元管理するなら変更推奨
-
-    # ローカルにファイルはもう無い想定なので「PDF file not found」になる可能性大
-    # 必要に応じて doc.cloudinary_url を使ってダウンロード返却に書き換える
+    # CloudinaryのURLにリダイレクトする例（またはダウンロードして返却）
+    # ここではサンプルとしてローカルファイルの存在チェックを残すが、実際はdoc.cloudinary_urlを利用してください
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], doc.cloudinary_url)
     if not os.path.exists(pdf_path):
         return jsonify({"error": "PDF file not found"}), 404
@@ -1523,9 +1494,9 @@
     response.headers['Content-Disposition'] = f'inline; filename=document_{doc_id}.pdf'
     return response
 
-    @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
-    @login_required
-    def generate_view_link(doc_id):
+@app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
+@login_required
+def generate_view_link(doc_id):
     doc = Document.query.get_or_404(doc_id)
     if current_user.role != 'env' and doc.company_id != current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
@@ -1534,12 +1505,12 @@
     view_url = f"{domain}/documents/{doc_id}/view_pdf?token={token}"
     return jsonify({"view_url": view_url})
 
-    ###############################################################################
-    # 通知 + 検索ログ
-    ###############################################################################
-    @app.route('/notifications', methods=['GET'])
-    @jwt_required
-    def get_notifications():
+###############################################################################
+# 通知 + 検索ログ
+###############################################################################
+@app.route('/notifications', methods=['GET'])
+@jwt_required
+def get_notifications():
     try:
         user_id = g.current_user.id
         notifs = Notification.query.filter_by(user_id=user_id).order_by(Notification.created_at.desc()).all()
@@ -1579,9 +1550,9 @@
         print("通知取得エラー:", ex)
         return jsonify({"error": f"通知取得でエラー: {str(ex)}"}), 500
 
-    @app.route('/notifications/mark_read', methods=['POST'])
-    @jwt_required
-    def mark_notification_read():
+@app.route('/notifications/mark_read', methods=['POST'])
+@jwt_required
+def mark_notification_read():
     data = get_request_data()
     notif_id = data.get("notification_id")
     if not notif_id:
@@ -1593,9 +1564,9 @@
     db.session.commit()
     return jsonify({"message": "Notification marked as read"})
 
-    @app.route('/search', methods=['GET'])
-    @jwt_required
-    def search_documents():
+@app.route('/search', methods=['GET'])
+@jwt_required
+def search_documents():
     keyword = request.args.get("keyword", "").strip()
     if not keyword:
         return jsonify({"error": "keyword is required"}), 400
@@ -1643,20 +1614,20 @@
 
     return jsonify({"results": results})
 
-    ###############################################################################
-    # JWT保護テスト
-    ###############################################################################
-    @app.route('/jwt/protected', methods=['GET'])
-    @jwt_required
-    def jwt_protected_route():
+###############################################################################
+# JWT保護テスト
+###############################################################################
+@app.route('/jwt/protected', methods=['GET'])
+@jwt_required
+def jwt_protected_route():
     return jsonify({"message": "JWT is valid. Protected content accessible."})
 
-    ###############################################################################
-    # アカウント更新
-    ###############################################################################
-    @app.route('/account/update', methods=['POST'])
-    @login_required
-    def account_update():
+###############################################################################
+# アカウント更新
+###############################################################################
+@app.route('/account/update', methods=['POST'])
+@login_required
+def account_update():
     try:
         data = get_request_data()
         current_password = data.get("current_password")
@@ -1678,15 +1649,15 @@
         print("アカウント更新エラー:", ex)
         return jsonify({"error": f"アカウント更新に失敗しました: {str(ex)}"}), 500
 
-    ###############################################################################
-    # 基本ルート
-    ###############################################################################
-    @app.route('/')
-    def index():
+###############################################################################
+# 基本ルート
+###############################################################################
+@app.route('/')
+def index():
     return render_template('index.html')
 
-    @app.route('/login', methods=['GET', 'POST'])
-    def login_route():
+@app.route('/login', methods=['GET', 'POST'])
+def login_route():
     if request.method == 'GET':
         return jsonify({"message": "Please POST username and password to login."})
     data = get_request_data()
@@ -1715,7 +1686,6 @@
             if company:
                 if is_subscription_expired(company):
                     return jsonify({"error": "This company's subscription has expired."}), 403
-
         login_user(user)
         token = generate_jwt(user)
         return jsonify({"message": "Login successful", "role": user.role, "user_id": user.id, "token": token})
@@ -1750,15 +1720,15 @@
 
     return jsonify({"error": "Invalid credentials"}), 401
 
-    def is_subscription_expired(company):
+def is_subscription_expired(company):
     if not company.updated_at:
         return True
     subscription_end = company.updated_at + timedelta(days=30)
     return datetime.utcnow() > subscription_end
 
-    @app.route('/logout', methods=['POST'])
-    @login_required
-    def logout_route():
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout_route():
     try:
         log_entry = LogEntry(user_id=current_user.id, action="logout", ip_address=request.remote_addr)
         db.session.add(log_entry)
@@ -1769,9 +1739,9 @@
         print("ログアウトエラー:", ex)
         return jsonify({"error": "ログアウト中にエラーが発生しました"}), 500
 
-    @app.route('/dashboard')
-    @login_required
-    def dashboard_route():
+@app.route('/dashboard')
+@login_required
+def dashboard_route():
     if current_user.role == 'env':
         company_count = Company.query.count()
         recent_logs = LogEntry.query.order_by(LogEntry.timestamp.desc()).limit(10).all()
@@ -1796,14 +1766,15 @@
             if progress_records else 0
         )
         return render_template("user_dashboard.html",
-                                user_videos=user_videos,
-                                public_videos=public_videos,
-                                completion_percentage=completion_percentage)
-    from flask_migrate import Migrate
-    migrate = Migrate(app, db)
+                               user_videos=user_videos,
+                               public_videos=public_videos,
+                               completion_percentage=completion_percentage)
 
-    # === Renderなどでgunicornを使う想定だが、ローカルテストならこのままOK
-    if __name__ == '__main__':
+from flask_migrate import Migrate
+migrate = Migrate(app, db)
+
+# === Renderなどでgunicornを使う想定だが、ローカルテストならこのままOK
+if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         if not User.query.filter_by(role='env').first():
@@ -1816,5 +1787,3 @@
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
-
-
