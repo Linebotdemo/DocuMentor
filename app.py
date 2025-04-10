@@ -408,9 +408,9 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
 ###############################################################################
 # Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
 ###############################################################################
-@app.route("/videos/<int:video_id>/view", methods=["GET"])
+@app.route("/videos/<int:video_id>/analyze", methods=["GET", "POST"])
 @jwt_required
-def view_video_status(video_id):
+def analyze_video(video_id):
     user = g.current_user
     video = Video.query.get(video_id)
 
@@ -420,16 +420,24 @@ def view_video_status(video_id):
     if video.user_id != user.id and user.role != 'env':
         return jsonify({"error": "アクセス権がありません"}), 403
 
-    # クイズテキストを取得（video.quizzes はリレーション）
-    quiz = Quiz.query.filter_by(video_id=video.id).first()
-    quiz_text = quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
+    if request.method == "GET":
+        # クイズと要約を返す
+        quiz = Quiz.query.filter_by(video_id=video.id).first()
+        quiz_text = quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
+        return jsonify({
+            "summary_text": video.summary_text or "要約がありません",
+            "quiz_text": quiz_text
+        })
 
-    return jsonify({
-        "summary_text": video.summary_text or "要約がありません",
-        "quiz_text": quiz_text
-    })
-
-
+    elif request.method == "POST":
+        # Whisper解析を実行（Celeryで非同期）
+        task = transcribe_video_task.delay(video.cloudinary_url, video.id)
+        try:
+            result = task.get(timeout=180)
+            from json import loads
+            return jsonify(loads(result))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
 
 def process_video(video, generation_mode="manual"):
@@ -527,27 +535,6 @@ def process_video(video, generation_mode="manual"):
 from flask import Flask, request, jsonify
 from tasks import transcribe_video_task
 from celery.result import AsyncResult  # 必要なら
-
-@app.route("/videos/<int:video_id>/analyze", methods=["POST"])
-def analyze_video(video_id):
-    video = Video.query.get(video_id)
-
-    if not video:
-        return jsonify({"error": "Video not found"}), 404
-
-    # ここで非同期タスク送信
-    task = transcribe_video_task.delay(video.cloudinary_url, video.id)
-
-    try:
-        # 同期的に結果を取得（3分待つ）
-        result = task.get(timeout=180)
-
-        # JSON文字列を元に戻す
-        from json import loads
-        return jsonify(loads(result))
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 ###############################################################################
