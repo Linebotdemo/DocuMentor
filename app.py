@@ -438,7 +438,13 @@ def process_video(video, generation_mode="manual"):
         print(f"[DEBUG] Whisper API URL: {whisper_api_url}")
         print(f"[DEBUG] Sending video URL to Whisper: {video.cloudinary_url}")
 
-        response = requests.post(whisper_api_url, json={"video_url": video.cloudinary_url}, timeout=300)
+        response = requests.post(
+            whisper_api_url,
+            json={"video_url": video.cloudinary_url},
+            headers={"Content-Type": "application/json"},  # ← 明示的に追加
+            timeout=300
+        )
+
 
         print(f"[DEBUG] Whisper Response: {response.status_code} / {response.text}")
 
