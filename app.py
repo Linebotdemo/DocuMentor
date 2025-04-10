@@ -964,12 +964,12 @@ def upload_video():
             db.session.commit()
 
         # 4) Whisper解析＋クイズ生成
-    try:
-        print("[DEBUG] タスク送信前: video_id =", video.id)
-        result = transcribe_video_task.delay(video.cloudinary_url, video.id)
-        print("[DEBUG] タスク送信後, タスクID:", result.id)
-    except Exception as e:
-        print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
+        try:
+            print("[DEBUG] タスク送信前: video_id =", video.id)
+            result = transcribe_video_task.delay(video.cloudinary_url, video.id)
+            print("[DEBUG] タスク送信後, タスクID:", result.id)
+        except Exception as e:
+            print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
 
     return jsonify({"message": "アップロード成功", "video_id": video.id})
 
