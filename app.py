@@ -971,7 +971,7 @@ def upload_video():
         except Exception as e:
             print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
 
-    return jsonify({"message": "アップロード成功", "video_id": video.id})
+        return jsonify({"message": "アップロード成功", "video_id": video.id})
 
 
 @app.route('/videos/my', methods=['GET'])
