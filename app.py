@@ -417,15 +417,17 @@ def view_video_status(video_id):
 
     if not video:
         return jsonify({"error": "動画が見つかりません"}), 404
-    if video.user_id != user_id:
-        return jsonify({"error": "アクセス権がありません"}), 403  # ←ココに引っかかってる可能性高
+
+    # デバッグログ
+    print(f"[動画確認] video.user_id={video.user_id}, current_user_id={user_id}, role={user.role}")
+
+    if video.user_id != user_id and user.role != 'env':
+        return jsonify({"error": "アクセス権がありません"}), 403
 
     return jsonify({
         "summary_text": video.summary_text or "要約がありません",
         "quiz_text": video.quiz_text or "クイズがありません"
     })
-
-
 
 
 def process_video(video, generation_mode="manual"):
