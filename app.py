@@ -408,111 +408,11 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
 ###############################################################################
 # Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
 ###############################################################################
-@app.route("/videos/<int:video_id>/analyze", methods=["GET", "POST"])
-@jwt_required
-def analyze_video(video_id):
-    user = g.current_user
-    video = Video.query.get_or_404(video_id)
-
-    if user.role != 'env' and video.company_id != user.company_id:
-        return jsonify({"error": "他社の動画は解析できません"}), 403
-
-    if request.method == "POST":
-        # Whisper文字起こし（非同期）
-        try:
-            task = transcribe_video_task.delay(video.cloudinary_url, video.id)
-            result = task.get(timeout=180)
-            from json import loads
-            return jsonify(loads(result))
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    else:  # GET
-        try:
-            # クイズテキスト
-            quiz = Quiz.query.filter_by(video_id=video.id).first()
-            quiz_text = quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
-
-            # OCR付きステップ情報
-            images_info = ""
-            steps = VideoStep.query.filter_by(video_id=video_id).order_by(VideoStep.order).all()
-            for step in steps:
-                image_texts = []
-                for att in step.attachments:
-                    if att.filetype == 'image':
-                        try:
-                            resp = requests.get(att.cloudinary_url)
-                            if resp.status_code == 200:
-                                temp_img_path = os.path.join(app.config['UPLOAD_FOLDER'], "temp_step_img.png")
-                                with open(temp_img_path, "wb") as f:
-                                    f.write(resp.content)
-                                img = Image.open(temp_img_path)
-                                ocr_result = pytesseract.image_to_string(img, lang='jpn')
-                                image_texts.append(f"画像のOCR結果:\n{ocr_result.strip()}")
-                                os.remove(temp_img_path)
-                            else:
-                                image_texts.append(f"画像ダウンロード失敗: {att.cloudinary_url}")
-                        except Exception as e:
-                            image_texts.append(f"画像OCR失敗: {str(e)}")
-                if image_texts:
-                    images_info += f"【ステップ {step.order}】\n" + "\n".join(image_texts) + "\n\n"
-
-            if video.ocr_text:
-                images_info += f"【アップロード画像OCR結果】\n{video.ocr_text}\n\n"
-
-            # GPT用プロンプト生成
-            generation_mode = request.args.get("generation_mode", "manual")
-            if generation_mode == "minutes":
-                prompt_header = "以下の動画書き起こしと画像OCR結果から、会議の議事録として、主要議題、決定事項、アクションアイテムを生成してください。"
-            else:
-                prompt_header = "以下の動画書き起こしと画像OCR結果から、操作マニュアルとして、各ステップの手順と説明を生成してください。"
-
-            prompt = (
-                f"{prompt_header}\n\n"
-                "【音声書き起こし】\n" + (video.whisper_text or "") + "\n\n" +
-                "【画像OCR結果】\n" + images_info + "\n\n" +
-                "上記の内容に基づいて、ステップごとの操作手順と説明を日本語で出力してください。"
-            )
-
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "あなたはプロのマニュアル作成者です。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=1000
-            )
-            analysis_text = response.choices[0].message.content.strip()
-
-            return jsonify({
-                "summary_text": video.summary_text or "要約がありません",
-                "quiz_text": quiz_text,
-                "analysis": analysis_text
-            })
-
-        except Exception as e:
-            print("動画解析エラー:", e)
-            return jsonify({"error": str(e)}), 500
-
-
-
 def process_video(video, generation_mode="manual"):
     try:
+        # Whisper文字起こし（外部APIを叩く）
         whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
-        print(f"[DEBUG] Whisper API URL: {whisper_api_url}")
-        print(f"[DEBUG] Sending video URL to Whisper: {video.cloudinary_url}")
-
-        response = requests.post(
-            whisper_api_url,
-            json={"video_url": video.cloudinary_url},
-            headers={"Content-Type": "application/json"},  # ← 明示的に追加
-            timeout=300
-        )
-
-
-        print(f"[DEBUG] Whisper Response: {response.status_code} / {response.text}")
-
+        response = requests.post(whisper_api_url, json={"video_url": video.cloudinary_url}, timeout=300)
         if response.status_code == 200:
             result = response.json()
             video.whisper_text = result.get("text", "文字起こしが空でした")
@@ -520,9 +420,7 @@ def process_video(video, generation_mode="manual"):
             video.whisper_text = f"Transcription failed: {response.text}"
 
     except Exception as e:
-        print(f"[ERROR] Whisperリクエスト失敗: {str(e)}")
         video.whisper_text = f"Transcription failed: {str(e)}"
-
 
     # OCR結果を取得
     ocr_text = video.ocr_text if video.ocr_text else ""
@@ -584,14 +482,6 @@ def process_video(video, generation_mode="manual"):
         quiz.auto_quiz_text = f"Quiz generation failed: {str(e)}"
 
     db.session.commit()
-
-
-
-# 🔽 app.py
-
-from flask import Flask, request, jsonify
-from tasks import transcribe_video_task
-from celery.result import AsyncResult  # 必要なら
 
 
 ###############################################################################
@@ -1090,6 +980,26 @@ def get_my_videos():
         ]
     })
 
+@celery.task
+def transcribe_video_task(video_url, video_id):
+    print(f"[DEBUG] タスク実行開始: video_url={video_url}, video_id={video_id}")
+    whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
+    try:
+        response = requests.post(whisper_api_url, json={"video_url": video_url}, timeout=600)
+        text = response.json().get("text", "")
+        print(f"[DEBUG] Whisper結果: {text}")
+
+        # DB保存のロジック
+        video = Video.query.get(video_id)
+        if video:
+            video.whisper_text = text
+            db.session.commit()
+
+        return text
+    except Exception as e:
+        print(f"[ERROR] Whisperタスクエラー: {str(e)}")
+        return None
+
 
 @app.route('/videos/<int:video_id>/view', methods=['GET'])
 @jwt_required
@@ -1107,9 +1017,6 @@ def view_video(video_id):
         "summary_text": video.summary_text or "要約がありません",
         "quiz_text": quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
     })
-
-
-
 
 ###############################################################################
 # ステップ画像アップロード（まだクラウド対応したい場合は書き換え可）
@@ -1170,6 +1077,69 @@ def get_steps_with_images(video_id):
 ###############################################################################
 # 動画解析
 ###############################################################################
+@app.route('/videos/<int:video_id>/analyze', methods=['GET'])
+@jwt_required
+def analyze_video(video_id):
+    try:
+        video = Video.query.get_or_404(video_id)
+        if g.current_user.role != 'env' and video.company_id != g.current_user.company_id:
+            return jsonify({"error": "他社の動画は解析できません"}), 403
+
+        images_info = ""
+        steps = VideoStep.query.filter_by(video_id=video_id).order_by(VideoStep.order).all()
+        for step in steps:
+            image_texts = []
+            for att in step.attachments:
+                if att.filetype == 'image':
+                    # CloudinaryURLからDLしてOCR
+                    try:
+                        resp = requests.get(att.cloudinary_url)
+                        if resp.status_code == 200:
+                            temp_img_path = os.path.join(app.config['UPLOAD_FOLDER'], "temp_step_img.png")
+                            with open(temp_img_path, "wb") as f:
+                                f.write(resp.content)
+                            img = Image.open(temp_img_path)
+                            ocr_result = pytesseract.image_to_string(img, lang='jpn')
+                            image_texts.append(f"画像のOCR結果:\n{ocr_result.strip()}")
+                            os.remove(temp_img_path)
+                        else:
+                            image_texts.append(f"画像ダウンロード失敗: {att.cloudinary_url}")
+                    except Exception as e:
+                        image_texts.append(f"画像OCR失敗: {str(e)}")
+            if image_texts:
+                images_info += f"【ステップ {step.order}】\n" + "\n".join(image_texts) + "\n\n"
+
+        if video.ocr_text:
+            images_info += f"【アップロード画像OCR結果】\n{video.ocr_text}\n\n"
+
+        generation_mode = request.args.get("generation_mode", "manual")
+        if generation_mode == "minutes":
+            prompt_header = "以下の動画書き起こしと画像OCR結果から、会議の議事録として、主要議題、決定事項、アクションアイテムを生成してください。"
+        else:
+            prompt_header = "以下の動画書き起こしと画像OCR結果から、操作マニュアルとして、各ステップの手順と説明を生成してください。"
+
+        prompt = (
+            f"{prompt_header}\n\n"
+            "【音声書き起こし】\n" + (video.whisper_text or "") + "\n\n" +
+            "【画像OCR結果】\n" + images_info + "\n\n" +
+            "上記の内容に基づいて、ステップごとの操作手順と説明を日本語で出力してください。"
+        )
+
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "あなたはプロのマニュアル作成者です。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,
+            max_tokens=1000
+        )
+        analysis_text = response.choices[0].message.content.strip()
+        return jsonify({"analysis": analysis_text})
+
+    except Exception as e:
+        print("動画解析エラー:", e)
+        return jsonify({"error": str(e)}), 500
 
 ###############################################################################
 # ENV企業管理
@@ -1859,3 +1829,5 @@ if __name__ == '__main__':
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
+
