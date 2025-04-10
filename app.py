@@ -1014,21 +1014,19 @@ def get_my_videos():
 @celery.task
 def transcribe_video_task(video_url, video_id):
     print(f"[DEBUG] タスク実行開始: video_url={video_url}, video_id={video_id}")
-    whisper_api_url = os.getenv("WHISPER_API_URL", "http://localhost:8001/transcribe")
+    
     try:
-        response = requests.post(whisper_api_url, json={"video_url": video_url}, timeout=600)
-        text = response.json().get("text", "")
-        print(f"[DEBUG] Whisper結果: {text}")
-
-        # DB保存のロジック
         video = Video.query.get(video_id)
-        if video:
-            video.whisper_text = text
-            db.session.commit()
+        if not video:
+            print(f"[ERROR] video_id={video_id} が見つかりません")
+            return None
 
-        return text
+        # Whisper＋GPT要約＋クイズ生成を一括で行う
+        process_video(video)
+
+        return video.whisper_text or "文字起こし結果なし"
     except Exception as e:
-        print(f"[ERROR] Whisperタスクエラー: {str(e)}")
+        print(f"[ERROR] Whisperタスク内エラー: {str(e)}")
         return None
 
 
