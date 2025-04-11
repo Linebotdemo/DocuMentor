@@ -1051,6 +1051,39 @@ def upload_step_image(video_id, step_id):
 
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
 
+
+@app.route("/videos/whisper_callback", methods=["POST"])
+def whisper_callback():
+    try:
+        data = request.get_json()
+        video_id = data.get("video_id")
+        text = data.get("text")
+
+        if not video_id or not text:
+            print("[ERROR] video_id または text が空です", flush=True)
+            return jsonify({"error": "video_id or text missing"}), 400
+
+        video = Video.query.get(video_id)
+        if not video:
+            print(f"[ERROR] video_id {video_id} に対応する動画が見つかりません", flush=True)
+            return jsonify({"error": "video not found"}), 404
+
+        video.whisper_text = text
+        db.session.commit()
+
+        print(f"[INFO] ✅ video_id={video_id} に文字起こし結果を保存しました", flush=True)
+        return jsonify({"message": "Callback processed successfully"}), 200
+
+    except Exception as e:
+        print(f"[ERROR] Whisper callbackで例外発生: {str(e)}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+
+
+
 @app.route('/videos/<int:video_id>/steps_with_images', methods=['GET'])
 @login_required
 def get_steps_with_images(video_id):
