@@ -909,7 +909,12 @@ def upload_video():
         title = request.form.get("title") or "Untitled Video"
         file = request.files.get("video_file")
         if not file:
-            return jsonify({"error": "ファイルがアップロードされていません"}), 400
+            return jsonify({
+                "message": "アップロード成功",
+                 "video_id": video.id,
+                 "summary_text": video.summary_text or "",
+                 "quiz_text": Quiz.query.filter_by(video_id=video.id).first().auto_quiz_text if Quiz.query.filter_by(video_id=video.id).first() else ""
+            })
 
         generation_mode = request.form.get("generation_mode", "manual")
 
@@ -960,6 +965,7 @@ def upload_video():
             video.ocr_text = "\n".join(ocr_results)
             db.session.commit()
 
+
         # 4) Whisper解析＋クイズ生成
         try:
             print("[DEBUG] タスク送信前: video_id =", video.id)
@@ -968,10 +974,17 @@ def upload_video():
         except Exception as e:
             print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
 
-        return jsonify({"message": "アップロード成功", "video_id": video.id})
-    except Exception as ex:
-        print("動画アップロードエラー:", ex)
-        return jsonify({"error": str(ex)}), 500
+        # クイズが存在すれば取得、なければ空文字
+        quiz = Quiz.query.filter_by(video_id=video.id).first()
+        quiz_text = quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else ""
+
+        return jsonify({
+            "message": "アップロード成功",
+            "video_id": video.id,
+            "summary_text": video.summary_text or "",
+            "quiz_text": quiz_text
+        })
+
 
 @app.route('/videos/my', methods=['GET'])
 @login_required
