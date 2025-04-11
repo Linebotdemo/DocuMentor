@@ -765,6 +765,16 @@ def process_video(video_id):
 
     return jsonify({"status": "task submitted"})
 
+@app.route("/videos/<int:video_id>/process", methods=["POST"])
+def process_video_route(video_id):
+    video = Video.query.get_or_404(video_id)
+    process_video(video)  # ← これをRender側で直接呼び出す
+    return jsonify({"message": "Video processed"})
+
+
+
+
+
 ###############################################################################
 # ブロック、解除、承認
 ###############################################################################
