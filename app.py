@@ -84,6 +84,9 @@ ENV_USERS = {
     }
 }
 
+celery = Celery("documentor_worker")
+transcribe_video_task = celery.signature("app.transcribe_video_task")
+
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
