@@ -866,10 +866,8 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
       type: "GET",
       headers: { "Authorization": "Bearer " + jwtToken },
       success: function(data){
-        // ここでは、summary_textが非空になればタスク完了と判断
         if (data.summary_text && data.summary_text !== "要約がありません") {
           clearInterval(poller);
-          // 取得したsummaryやquizを画面に表示する
           $("#upload-result").text("動画解析完了！");
           $("#generated-content").val("要約: " + data.summary_text + "\n\nクイズ: " + data.quiz_text);
         } else {
@@ -883,12 +881,10 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
     attempts++;
     if (attempts >= maxAttempts) {
       clearInterval(poller);
-      alert("解析に時間がかかりすぎています。しばらくしてから再度確認してください。");
+      $("#upload-result").text("解析に時間がかかりすぎています。後ほど再度お試しください。");
     }
   }, interval);
 }
-
-
 
 
 
