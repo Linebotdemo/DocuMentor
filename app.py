@@ -10,8 +10,6 @@ from celery import Celery
 # from app import db, Video
 from tasks import transcribe_video_task
 
-
-
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -86,15 +84,11 @@ ENV_USERS = {
     }
 }
 
-
-
 celery.conf.broker_url = os.getenv("REDIS_URL")
 celery.conf.result_backend = os.getenv("REDIS_URL")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-
 
 ###############################################################################
 # DBモデル
@@ -611,8 +605,8 @@ def handle_line_text(event):
         conversation_states.pop(line_user_id, None)
         return
 
-    # "pdf"
-    if command_text == "pdf" and not state:
+    # PDF要求
+    if text.lower() == "pdf" and not state:
         conversation_states[line_user_id] = {"expected": "pdf_option"}
         options_text = "PDFを選択してください:\n1. マニュアル\n2. 議事録\n3. 社内規定"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=options_text))
@@ -625,7 +619,7 @@ def handle_line_text(event):
         # ... （以下の実装省略部分もそのまま保持）
         return
 
-    # 5) 既定応答
+    # 既定応答
     default_reply = (
         "PDF   登録されているPDFが共有されます\n"
         "ステータス   現在の登録内容が確認できます\n"
@@ -760,8 +754,6 @@ def line_approve():
 def line_reject():
     return jsonify({"error": "LINE連携機能（拒否）は無効です."}), 403
 
-
-
 @app.route('/videos/<int:video_id>/process', methods=['POST'])
 def process_video(video_id):
     video = Video.query.get(video_id)
@@ -772,7 +764,6 @@ def process_video(video_id):
     transcribe_video_task.delay(video.cloudinary_url, video.id)
 
     return jsonify({"status": "task submitted"})
-
 
 ###############################################################################
 # ブロック、解除、承認
@@ -911,9 +902,9 @@ def upload_video():
         if not file:
             return jsonify({
                 "message": "アップロード成功",
-                 "video_id": video.id,
-                 "summary_text": video.summary_text or "",
-                 "quiz_text": Quiz.query.filter_by(video_id=video.id).first().auto_quiz_text if Quiz.query.filter_by(video_id=video.id).first() else ""
+                "video_id": video.id,
+                "summary_text": video.summary_text or "",
+                "quiz_text": Quiz.query.filter_by(video_id=video.id).first().auto_quiz_text if Quiz.query.filter_by(video_id=video.id).first() else ""
             })
 
         generation_mode = request.form.get("generation_mode", "manual")
@@ -965,7 +956,6 @@ def upload_video():
             video.ocr_text = "\n".join(ocr_results)
             db.session.commit()
 
-
         # 4) Whisper解析＋クイズ生成
         try:
             print("[DEBUG] タスク送信前: video_id =", video.id)
@@ -984,7 +974,8 @@ def upload_video():
             "summary_text": video.summary_text or "",
             "quiz_text": quiz_text
         })
-
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/videos/my', methods=['GET'])
 @login_required
