@@ -10,6 +10,8 @@ from celery import Celery
 # from app import db, Video
 from tasks import transcribe_video_task
 
+
+
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -84,13 +86,21 @@ ENV_USERS = {
     }
 }
 
-celery = Celery("documentor_worker")
-transcribe_video_task = celery.signature("app.transcribe_video_task")
+
+
 celery.conf.broker_url = os.getenv("REDIS_URL")
 celery.conf.result_backend = os.getenv("REDIS_URL")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+transcribe_video_task.delay(video_url, video_id)
+
+
+
+
+
+
 
 ###############################################################################
 # DBモデル
