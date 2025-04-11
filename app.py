@@ -94,12 +94,6 @@ celery.conf.result_backend = os.getenv("REDIS_URL")
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-transcribe_video_task.delay(video_url, video_id)
-
-
-
-
-
 
 
 ###############################################################################
@@ -765,6 +759,20 @@ def line_approve():
 @jwt_required
 def line_reject():
     return jsonify({"error": "LINE連携機能（拒否）は無効です."}), 403
+
+
+
+@app.route('/videos/<int:video_id>/process', methods=['POST'])
+def process_video(video_id):
+    video = Video.query.get(video_id)
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    from tasks import transcribe_video_task
+    transcribe_video_task.delay(video.cloudinary_url, video.id)
+
+    return jsonify({"status": "task submitted"})
+
 
 ###############################################################################
 # ブロック、解除、承認
