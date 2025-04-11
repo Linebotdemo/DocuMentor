@@ -86,6 +86,8 @@ ENV_USERS = {
 
 celery = Celery("documentor_worker")
 transcribe_video_task = celery.signature("app.transcribe_video_task")
+celery.conf.broker_url = os.getenv("REDIS_URL")
+celery.conf.result_backend = os.getenv("REDIS_URL")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
