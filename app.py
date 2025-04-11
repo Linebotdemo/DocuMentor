@@ -770,15 +770,18 @@ def view_video_result(video_id):
     try:
         video = Video.query.get(video_id)
         if not video:
+            print(f"[ERROR] video_id={video_id} が見つかりません")
             return jsonify({"error": "video not found"}), 404
 
+        print(f"[DEBUG] video_id={video_id} の内容を取得")
         return jsonify({
             "summary_text": video.whisper_text or "要約がありません",
             "quiz_text": video.quiz_text or "クイズがありません"
         })
-
     except Exception as e:
+        print(f"[ERROR] /videos/{video_id}/view 内で例外: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
