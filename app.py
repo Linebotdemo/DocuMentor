@@ -52,7 +52,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # 一時フォルダとして使用（OCRなどに使う）
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI')
+
 
 
 app.config['CELERY_BROKER_URL'] = os.getenv("REDIS_URL", "redis://localhost:6380/0")
@@ -148,6 +148,7 @@ class Video(db.Model):
     ocr_text = db.Column(db.Text, nullable=True)
     views = db.Column(db.Integer, default=0)
     is_temporary = db.Column(db.Boolean, default=False)
+    quiz_text = db.Column(db.Text, nullable=True)
 
     steps = db.relationship('VideoStep', backref='video', lazy=True, cascade="all, delete-orphan")
     quizzes = db.relationship('Quiz', backref='video', lazy=True, cascade="all, delete-orphan")
