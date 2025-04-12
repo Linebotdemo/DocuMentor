@@ -1079,93 +1079,31 @@ def upload_step_image(video_id, step_id):
 
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
 
-
 @app.route("/videos/whisper_callback", methods=["POST"])
 def whisper_callback():
     try:
         data = request.get_json()
         video_id = data.get("video_id")
         text = data.get("text")
-        print(f"[INFO] 🔁 Whisper callback受信: video_id={video_id}")
-
         if not video_id or not text:
-            return jsonify({"error": "video_idまたはtextが不足しています"}), 400
+            return jsonify({"error": "Missing fields"}), 400
 
         video = Video.query.get(video_id)
         if not video:
-            return jsonify({"error": "該当する動画が見つかりません"}), 404
-
-        # OpenAIで要約・クイズ生成（必ず実施）
-        mode = video.generation_mode or "manual"
-
-        if mode == "manual":
-            summary_prompt = f"""
-あなたはバイク教習の講師です。以下の発言記録はバイクの操作を解説する映像の文字起こしです。
-この内容を踏まえて、バイクの運転や目線に関するマニュアル文として自然な形式で要約してください。
-
---- 
-{text}
---- 
-"""
-        else:  # "minutes"
-            summary_prompt = f"""
-以下は講師によるバイク操作の解説映像の文字起こしです。この内容をもとに、箇条書きではなく会話調の議事録形式で内容を要約してください。
-
----
-{text}
----
-"""
-
-        quiz_prompt = f"""
-以下の文章をもとに、バイク運転に関するクイズを3問生成してください。
-出力形式は以下に厳密に従ってください：
-
-質問文: 質問内容  
-選択肢:  
-1. ○○  
-2. ○○  
-3. ○○  
-4. ○○  
-正解番号: 数字  
-解説: なぜそれが正解かの簡潔な解説
-
----
-{text}
----
-"""
-
-        summary_response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "あなたはプロのライティングAIです"},
-                {"role": "user", "content": summary_prompt}
-            ]
-        )
-
-        quiz_response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "あなたは教育向けクイズ作成AIです"},
-                {"role": "user", "content": quiz_prompt}
-            ]
-        )
-
-        summary_text = summary_response.choices[0].message.content.strip()
-        quiz_text = quiz_response.choices[0].message.content.strip()
+            return jsonify({"error": "Video not found"}), 404
 
         video.transcript = text
-        video.summary_text = summary_text
-        video.quiz_text = quiz_text
-
         db.session.commit()
-        print(f"[INFO] ✅ video_id={video_id} に文字起こし・要約・クイズを保存しました")
-        return jsonify({"message": "保存完了"}), 200
+
+        # 🔁 OpenAI 要約 + クイズ → 非同期タスクへ送る
+        from tasks import generate_summary_and_quiz_task
+        generate_summary_and_quiz_task.delay(video_id, text)
+
+        return jsonify({"message": "Transcription received. Task dispatched."}), 200
 
     except Exception as e:
         print(f"[ERROR] Whisper callbackで例外発生: {e}")
         return jsonify({"error": str(e)}), 500
-
-
 
 
 
