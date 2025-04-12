@@ -1075,79 +1075,85 @@ def whisper_callback():
         data = request.get_json()
         video_id = data.get("video_id")
         text = data.get("text")
+        print(f"[INFO] 🔁 Whisper callback受信: video_id={video_id}")
 
         if not video_id or not text:
-            print("[ERROR] video_id または text が空です", flush=True)
-            return jsonify({"error": "video_id or text missing"}), 400
+            return jsonify({"error": "video_idまたはtextが不足しています"}), 400
 
         video = Video.query.get(video_id)
         if not video:
-            print(f"[ERROR] video_id {video_id} に対応する動画が見つかりません", flush=True)
-            return jsonify({"error": "video not found"}), 404
+            return jsonify({"error": "該当する動画が見つかりません"}), 404
 
-        video.whisper_text = text
-        ocr_text = video.ocr_text or ""
-        generation_mode = video.generation_mode or "manual"
+        # OpenAIで要約・クイズ生成（必ず実施）
+        mode = video.generation_mode or "manual"
 
-        if generation_mode == "minutes":
-            prompt_header = "以下の動画書き起こしと画像OCR結果から、会議の議事録を作成してください。"
-        else:
-            prompt_header = (
-                "以下の動画書き起こしと画像OCR結果を元に、操作マニュアルを作成してください。\n"
-                "各ステップを箇条書きで示し、見やすいレイアウトを心がけてください。"
-            )
+        if mode == "manual":
+            summary_prompt = f"""
+あなたはバイク教習の講師です。以下の発言記録はバイクの操作を解説する映像の文字起こしです。
+この内容を踏まえて、バイクの運転や目線に関するマニュアル文として自然な形式で要約してください。
 
-        summary_prompt = (
-            f"{prompt_header}\n\n"
-            f"【音声書き起こし】\n{text}\n\n"
-            f"【画像OCR結果】\n{ocr_text}\n\n要約:"
-        )
+--- 
+{text}
+--- 
+"""
+        else:  # "minutes"
+            summary_prompt = f"""
+以下は講師によるバイク操作の解説映像の文字起こしです。この内容をもとに、箇条書きではなく会話調の議事録形式で内容を要約してください。
 
-        summary_res = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+---
+{text}
+---
+"""
+
+        quiz_prompt = f"""
+以下の文章をもとに、バイク運転に関するクイズを3問生成してください。
+出力形式は以下に厳密に従ってください：
+
+質問文: 質問内容  
+選択肢:  
+1. ○○  
+2. ○○  
+3. ○○  
+4. ○○  
+正解番号: 数字  
+解説: なぜそれが正解かの簡潔な解説
+
+---
+{text}
+---
+"""
+
+        summary_response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "あなたはプロのマニュアル作成者です。"},
+                {"role": "system", "content": "あなたはプロのライティングAIです"},
                 {"role": "user", "content": summary_prompt}
-            ],
-            temperature=0.5,
-            max_tokens=500
-        )
-        summary_text = summary_res.choices[0].message.content.strip()
-        video.summary_text = summary_text
-
-        quiz_prompt = (
-            "以下の資料内容から、3問以上の日本語クイズを作成してください。\n"
-            "出力形式は「質問文、4つの選択肢、正解番号、解説」。改行区切りで出力してください。\n\n"
-            f"【資料内容】\n{summary_text}\n\nクイズ:"
+            ]
         )
 
-        quiz_res = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+        quiz_response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
-                {"role": "system", "content": "あなたはプロの教材作成者です。"},
+                {"role": "system", "content": "あなたは教育向けクイズ作成AIです"},
                 {"role": "user", "content": quiz_prompt}
-            ],
-            temperature=0.7,
-            max_tokens=800
+            ]
         )
-        quiz_text = quiz_res.choices[0].message.content.strip()
+
+        summary_text = summary_response.choices[0].message.content.strip()
+        quiz_text = quiz_response.choices[0].message.content.strip()
+
+        video.transcript = text
+        video.summary_text = summary_text
         video.quiz_text = quiz_text
 
-        quiz = Quiz.query.filter_by(video_id=video.id).first()
-        if not quiz:
-            quiz = Quiz(video_id=video.id, title=f"Quiz for {video.title}")
-            db.session.add(quiz)
-        quiz.auto_quiz_text = quiz_text
-
-        db.session.add(video)  # ← 忘れがちだけど必要！！
         db.session.commit()
-
-        print(f"[INFO] ✅ video_id={video_id} に文字起こし・要約・クイズを保存しました", flush=True)
-        return jsonify({"message": "Callback processed successfully"}), 200
+        print(f"[INFO] ✅ video_id={video_id} に文字起こし・要約・クイズを保存しました")
+        return jsonify({"message": "保存完了"}), 200
 
     except Exception as e:
-        print(f"[ERROR] Whisper callbackで例外発生: {str(e)}", flush=True)
+        print(f"[ERROR] Whisper callbackで例外発生: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
