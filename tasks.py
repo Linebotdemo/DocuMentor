@@ -16,5 +16,5 @@ def transcribe_video_task(video_url, video_id):
 
 @celery.task(bind=True)
 def generate_summary_and_quiz_task(self, video_id, transcript):
-    print(f"[DEBUG] Dummy summary+quiz task: {video_id}, length={len(transcript)}")
-    return "dummy summary+quiz executed"
+    print("[WARNING] Render上でgenerate_summary_and_quiz_taskは呼ばれるべきではありません")
+    return "dummy"
