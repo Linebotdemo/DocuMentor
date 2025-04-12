@@ -1078,7 +1078,6 @@ def upload_step_image(video_id, step_id):
     db.session.commit()
 
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
-
 @app.route("/videos/whisper_callback", methods=["POST"])
 def whisper_callback():
     try:
@@ -1095,9 +1094,13 @@ def whisper_callback():
         video.transcript = text
         db.session.commit()
 
-        # 🔁 OpenAI 要約 + クイズ → 非同期タスクへ送る
-        from tasks import generate_summary_and_quiz_task
-        generate_summary_and_quiz_task.delay(video_id, text)
+        # ✅ 安全にimportする
+        try:
+            from tasks import generate_summary_and_quiz_task
+            generate_summary_and_quiz_task.delay(video_id, text)
+        except Exception as imp_err:
+            print(f"[ERROR] 非同期タスクインポート失敗: {imp_err}")
+            return jsonify({"error": f"Import failed: {str(imp_err)}"}), 500
 
         return jsonify({"message": "Transcription received. Task dispatched."}), 200
 
