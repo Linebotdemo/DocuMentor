@@ -9,6 +9,7 @@ from functools import wraps
 from celery import Celery
 # from app import db, Video
 from tasks import transcribe_video_task
+from models import Video, Quiz
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -1083,14 +1084,9 @@ def whisper_callback():
             print(f"[ERROR] video_id {video_id} に対応する動画が見つかりません", flush=True)
             return jsonify({"error": "video not found"}), 404
 
-        # Whisper結果保存
         video.whisper_text = text
-
-        # OCR取得
         ocr_text = video.ocr_text or ""
-
-        # プロンプトモード
-        generation_mode = video.generation_mode or "manual"  # ←DBに保存されてる想定
+        generation_mode = video.generation_mode or "manual"
 
         if generation_mode == "minutes":
             prompt_header = "以下の動画書き起こしと画像OCR結果から、会議の議事録を作成してください。"
@@ -1118,7 +1114,6 @@ def whisper_callback():
         summary_text = summary_res.choices[0].message.content.strip()
         video.summary_text = summary_text
 
-        # クイズ生成
         quiz_prompt = (
             "以下の資料内容から、3問以上の日本語クイズを作成してください。\n"
             "出力形式は「質問文、4つの選択肢、正解番号、解説」。改行区切りで出力してください。\n\n"
@@ -1137,13 +1132,13 @@ def whisper_callback():
         quiz_text = quiz_res.choices[0].message.content.strip()
         video.quiz_text = quiz_text
 
-        # Quizモデルも保存（なければ新規作成）
         quiz = Quiz.query.filter_by(video_id=video.id).first()
         if not quiz:
             quiz = Quiz(video_id=video.id, title=f"Quiz for {video.title}")
             db.session.add(quiz)
         quiz.auto_quiz_text = quiz_text
 
+        db.session.add(video)  # ← 忘れがちだけど必要！！
         db.session.commit()
 
         print(f"[INFO] ✅ video_id={video_id} に文字起こし・要約・クイズを保存しました", flush=True)
@@ -1152,6 +1147,7 @@ def whisper_callback():
     except Exception as e:
         print(f"[ERROR] Whisper callbackで例外発生: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 
