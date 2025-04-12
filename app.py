@@ -780,7 +780,7 @@ def view_video_result(video_id):
             return jsonify({"error": "video not found"}), 404
 
         return jsonify({
-            "summary_text": video.whisper_text or "要約がありません",
+            "summary_text": video.summary_text or "要約がありません",  # ←ここ！
             "quiz_text": video.quiz_text or "クイズがありません"
         })
 
@@ -788,6 +788,15 @@ def view_video_result(video_id):
         return jsonify({"error": str(e)}), 500
 
 
+
+@app.route("/debug/summary/<int:video_id>")
+def debug_summary(video_id):
+    video = Video.query.get(video_id)
+    return jsonify({
+        "video_id": video.id,
+        "summary_text": video.summary_text,
+        "quiz_text": video.quiz_text
+    })
 
 
 
