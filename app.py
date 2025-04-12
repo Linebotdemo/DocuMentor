@@ -52,6 +52,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # 一時フォルダとして使用（OCRなどに使う）
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI')
+
 
 app.config['CELERY_BROKER_URL'] = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 app.config['CELERY_RESULT_BACKEND'] = app.config['CELERY_BROKER_URL']
