@@ -150,6 +150,7 @@ class Video(db.Model):
     views = db.Column(db.Integer, default=0)
     is_temporary = db.Column(db.Boolean, default=False)
     quiz_text = db.Column(db.Text, nullable=True)
+    generation_mode = db.Column(db.String(20), default="manual")
 
     steps = db.relationship('VideoStep', backref='video', lazy=True, cascade="all, delete-orphan")
     quizzes = db.relationship('Quiz', backref='video', lazy=True, cascade="all, delete-orphan")
