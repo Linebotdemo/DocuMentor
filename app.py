@@ -456,6 +456,9 @@ def process_video(video, generation_mode="manual"):
             max_tokens=800
         )
         auto_quiz_text = quiz_response.choices[0].message.content.strip()
+        video.quiz_text = auto_quiz_text
+
+
         quiz = Quiz.query.filter_by(video_id=video.id).first()
         if not quiz:
             quiz = Quiz(video_id=video.id, title=f"Quiz for {video.title}")
@@ -966,8 +969,8 @@ def upload_video():
             company_id=g.current_user.company_id,
             generation_mode=generation_mode
         )
-        db.session.add(video)
-        db.session.commit()
+            db.session.add(video)
+            db.session.commit()
         except Exception as e:
             print(f"[ERROR] Video DB登録失敗: {str(e)}")
             return jsonify({"error": f"動画DB登録中にエラーが発生: {str(e)}"}), 500
