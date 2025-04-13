@@ -893,18 +893,6 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
   }, interval);
 }
 
-
-
-
-    if (attempts >= maxAttempts) {
-      clearInterval(poller);
-      $("#upload-result").text("解析に時間がかかりすぎています。後ほど再度お試しください。");
-    }
-  }, interval);
-}
-
-
-
       $("input[name='generation_mode']").on("change", function(){
         currentGenerationMode = $(this).val(); // "manual" or "minutes"
       });
