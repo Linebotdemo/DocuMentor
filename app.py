@@ -54,6 +54,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+
+
 app.config['CELERY_BROKER_URL'] = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 app.config['CELERY_RESULT_BACKEND'] = app.config['CELERY_BROKER_URL']
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -150,6 +152,7 @@ class Video(db.Model):
     quiz_text = db.Column(db.Text, nullable=True)
     generation_mode = db.Column(db.String(20), default="manual")
     transcript = db.Column(db.Text, nullable=True)
+
 
     steps = db.relationship('VideoStep', backref='video', lazy=True, cascade="all, delete-orphan")
     quizzes = db.relationship('Quiz', backref='video', lazy=True, cascade="all, delete-orphan")
@@ -475,44 +478,6 @@ def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-@app.route("/videos/upload", methods=["POST"])
-@jwt_required
-def upload_video():
-    try:
-        user_id = g.current_user.id  # ← 認証されたユーザーのID取得
-        title = request.form.get("title") or "Untitled Video"
-        file = request.files.get("video_file")
-
-        if not file:
-            return jsonify({"error": "動画ファイルがありません"}), 400
-
-        # Cloudinaryなどへアップロード（例）
-        video_url = upload_to_cloudinary(
-            file,
-            resource_type="video",
-            folder="documentor/videos"
-        )
-
-        # Videoレコードを作成
-        video = Video(
-            title=title,
-            cloudinary_url=video_url,
-            user_id=user_id,
-            company_id=g.current_user.company_id,
-        )
-        db.session.add(video)
-        db.session.commit()
-
-        return jsonify({
-            "message": "アップロード成功",
-            "video_id": video.id
-        })
-
-    except Exception as e:
-        print("[ERROR] upload_video:", e)
-        return jsonify({"error": str(e)}), 500
-
-
 ###############################################################################
 # LINE Webhook
 ###############################################################################
@@ -808,6 +773,268 @@ def process_video(video_id):
     return jsonify({"status": "task submitted"})
 
 @app.route("/videos/<int:video_id>/view", methods=["GET"])
+def view_video_result(video_id):
+    try:
+        video = Video.query.get(video_id)
+        if not video:
+            return jsonify({"error": "video not found"}), 404
+
+        return jsonify({
+            "summary_text": video.summary_text or "要約がありません",  # ←ここ！
+            "quiz_text": video.quiz_text or "クイズがありません"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+@app.route("/debug/summary/<int:video_id>")
+def debug_summary(video_id):
+    video = Video.query.get(video_id)
+    quiz = Quiz.query.filter_by(video_id=video_id).first()
+    return jsonify({
+        "video_id": video.id,
+        "summary_text": video.summary_text,
+        "video.quiz_text": video.quiz_text,
+        "quiz.auto_quiz_text": quiz.auto_quiz_text if quiz else "なし"
+    })
+
+
+
+###############################################################################
+# ブロック、解除、承認
+###############################################################################
+@app.route('/line/users/<int:user_id>/block', methods=['POST'])
+@jwt_required
+def block_line_user(user_id):
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
+    target = User.query.get_or_404(user_id)
+    if g.current_user.role != 'env':
+        if target.company_id != g.current_user.company_id:
+            return jsonify({"error": "他社ユーザーへの操作はできません"}), 403
+    target.is_blocked = True
+    db.session.commit()
+    return jsonify({"message": f"{target.line_display_name or target.username} をブロックしました"})
+
+@app.route('/line/users/<int:user_id>/unblock', methods=['POST'])
+@jwt_required
+def unblock_line_user(user_id):
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
+    target = User.query.get_or_404(user_id)
+    if g.current_user.role != 'env':
+        if target.company_id != g.current_user.company_id:
+            return jsonify({"error": "他社ユーザーへの操作はできません"}), 403
+    target.is_blocked = False
+    db.session.commit()
+    return jsonify({"message": f"{target.line_display_name or target.username} のブロックを解除しました"})
+
+@app.route('/line/users/<int:user_id>/approve', methods=['POST'])
+@jwt_required
+def approve_line_user(user_id):
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
+    target = User.query.get_or_404(user_id)
+    if g.current_user.role != 'env':
+        if target.company_id != g.current_user.company_id:
+            return jsonify({"error": "他社ユーザーへの操作はできません"}), 403
+    target.line_approved = True
+    db.session.commit()
+    return jsonify({"message": f"{target.line_display_name or target.username} を承認しました"})
+
+###############################################################################
+# LINEユーザー一覧
+###############################################################################
+@app.route('/line/users', methods=['GET'])
+@jwt_required
+def list_line_users():
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
+    if g.current_user.role == 'env':
+        users = User.query.filter(User.line_id.isnot(None)).all()
+    else:
+        users = User.query.filter(
+            User.line_id.isnot(None),
+            User.company_id == g.current_user.company_id
+        ).all()
+    result = []
+    for u in users:
+        result.append({
+            "id": u.id,
+            "line_display_name": u.line_display_name or u.username,
+            "department": u.department or "",
+            "is_blocked": u.is_blocked,
+            "line_approved": u.line_approved,
+            "created_at": to_jst(u.created_at)
+        })
+    return jsonify({"users": result})
+
+@app.route("/videos/<int:video_id>/update_transcription", methods=["POST"])
+def update_transcription(video_id):
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if api_key != os.getenv("INTERNAL_API_KEY"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    whisper_text = data.get("whisper_text")
+    if not whisper_text:
+        return jsonify({"error": "No text provided"}), 400
+
+    video = Video.query.get(video_id)
+    if not video:
+        return jsonify({"error": "Video not found"}), 404
+
+    video.whisper_text = whisper_text
+    db.session.commit()
+    return jsonify({"message": "Transcription updated"})
+
+###############################################################################
+# PDFリンク共有
+###############################################################################
+@app.route('/line/share_pdf', methods=['POST'])
+@jwt_required
+def line_share_pdf():
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
+    data = get_request_data()
+    doc_id = data.get("document_id")
+    company_id = data.get("company_id")
+    if not doc_id or not company_id:
+        return jsonify({"error": "document_id and company_id are required"}), 400
+    if g.current_user.role != 'env':
+        if g.current_user.company_id != int(company_id):
+            return jsonify({"error": "他社PDFの共有はできません"}), 403
+    token = generate_temp_pdf_token(doc_id)
+    domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
+    view_url = f"{domain}/documents/{doc_id}/view_pdf?token={token}"
+
+    users = User.query.filter_by(company_id=company_id, line_approved=True).all()
+    if not users:
+        return jsonify({"error": "No linked LINE users found for this company"}), 404
+
+    results = []
+    for user in users:
+        try:
+            line_bot_api.push_message(
+                user.line_id,
+                TextSendMessage(text=f"【PDF共有】新しいPDFリンク: {view_url}")
+            )
+            results.append(f"Sent to {user.line_display_name or user.username}")
+        except Exception as e:
+            results.append(f"Failed to send to {user.line_display_name or user.username}: {str(e)}")
+    return jsonify({"message": "PDF link share executed", "details": results})
+
+###############################################################################
+# 動画アップロード（Cloudinary対応）
+###############################################################################
+@app.route("/videos/upload", methods=["POST"])
+@jwt_required
+def upload_video():
+    try:
+        user_id = g.current_user.id
+        title = request.form.get("title") or "Untitled Video"
+        file = request.files.get("video_file")
+        if not file:
+            return jsonify({
+                "message": "アップロード成功",
+                "video_id": video.id,
+                "summary_text": video.summary_text or "",
+                "quiz_text": Quiz.query.filter_by(video_id=video.id).first().auto_quiz_text if Quiz.query.filter_by(video_id=video.id).first() else ""
+            })
+
+        generation_mode = request.form.get("generation_mode", "manual")
+
+        # 1) Cloudinaryへアップロード（try内に入れる）
+        try:
+            video_url = upload_to_cloudinary(
+                file,
+                resource_type="video",
+                folder="documentor/videos"
+            )
+            print(f"[DEBUG] Cloudinaryアップロード結果: {video_url}")
+        except Exception as e:
+            print(f"[ERROR] Cloudinaryアップロード失敗: {str(e)}")
+            return jsonify({"error": "Cloudinaryへの動画アップロード中に例外が発生しました"}), 500
+
+        # 2) Videoレコード登録
+        video = Video(
+            title=title,
+            cloudinary_url=video_url,
+            user_id=user_id,
+            company_id=g.current_user.company_id,
+            generation_mode=generation_mode
+        )
+        db.session.add(video)
+        db.session.commit()
+        except Exception as e:
+            print(f"[ERROR] Video DB登録失敗: {str(e)}")
+            return jsonify({"error": f"動画DB登録中にエラーが発生: {str(e)}"}), 500
+
+        # 3) 画像ファイルがあればOCR
+        image_files = request.files.getlist("image_files")
+        ocr_results = []
+        if image_files:
+            for image in image_files:
+                # OCR用に一時保存
+                img_filename = secure_filename(image.filename)
+                temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"ocr_{img_filename}")
+                image.save(temp_path)
+                try:
+                    img_obj = Image.open(temp_path)
+                    ocr_text = pytesseract.image_to_string(img_obj, lang='jpn')
+                    ocr_results.append(f"画像 {img_filename} のOCR結果:\n{ocr_text.strip()}")
+                except Exception as e:
+                    ocr_results.append(f"画像 {img_filename} のOCR失敗: {str(e)}")
+                finally:
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+
+        if ocr_results:
+            video.ocr_text = "\n".join(ocr_results)
+            db.session.commit()
+
+        # 4) Whisper解析＋クイズ生成
+        try:
+            print("[DEBUG] タスク送信前: video_id =", video.id)
+            result = transcribe_video_task.delay(video.cloudinary_url, video.id)
+            print("[DEBUG] タスク送信後, タスクID:", result.id)
+        except Exception as e:
+            print(f"[ERROR] 非同期タスク送信失敗: {str(e)}")
+
+        # クイズが存在すれば取得、なければ空文字
+        quiz = Quiz.query.filter_by(video_id=video.id).first()
+        quiz_text = quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else ""
+
+        return jsonify({
+            "message": "アップロード成功",
+            "video_id": video.id,
+            "summary_text": video.summary_text or "",
+            "quiz_text": quiz_text
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/videos/my', methods=['GET'])
+@login_required
+def get_my_videos():
+    user_id = current_user.id
+    videos = Video.query.filter_by(user_id=user_id).order_by(Video.created_at.desc()).all()
+    return jsonify({
+        "videos": [
+            {
+                "id": v.id,
+                "title": v.title,
+                "created_at": to_jst(v.created_at)
+            }
+            for v in videos
+        ]
+    })
+
+@app.route('/videos/<int:video_id>/view', methods=['GET'])
 @jwt_required
 def view_video(video_id):
     video = Video.query.get_or_404(video_id)
@@ -854,7 +1081,6 @@ def upload_step_image(video_id, step_id):
     db.session.commit()
 
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
-
 @app.route("/videos/whisper_callback", methods=["POST"])
 def whisper_callback():
     try:
@@ -884,6 +1110,8 @@ def whisper_callback():
     except Exception as e:
         print(f"[ERROR] Whisper callbackで例外発生: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/videos/<int:video_id>/steps_with_images', methods=['GET'])
 @login_required
