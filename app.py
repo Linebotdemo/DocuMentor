@@ -962,13 +962,14 @@ def upload_video():
             return jsonify({"error": "Cloudinaryへの動画アップロード中に例外が発生しました"}), 500
 
         # 2) Videoレコード登録
-        video = Video(
-            title=title,
-            cloudinary_url=video_url,
-            user_id=user_id,
-            company_id=g.current_user.company_id,
-            generation_mode=generation_mode
-        )
+        try:
+            video = Video(
+                title=title,
+                cloudinary_url=video_url,
+                user_id=user_id,
+                company_id=g.current_user.company_id,
+                generation_mode=generation_mode
+            )
             db.session.add(video)
             db.session.commit()
         except Exception as e:
