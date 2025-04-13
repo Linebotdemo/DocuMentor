@@ -475,6 +475,44 @@ def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+@app.route("/videos/upload", methods=["POST"])
+@jwt_required
+def upload_video():
+    try:
+        user_id = g.current_user.id  # ← 認証されたユーザーのID取得
+        title = request.form.get("title") or "Untitled Video"
+        file = request.files.get("video_file")
+
+        if not file:
+            return jsonify({"error": "動画ファイルがありません"}), 400
+
+        # Cloudinaryなどへアップロード（例）
+        video_url = upload_to_cloudinary(
+            file,
+            resource_type="video",
+            folder="documentor/videos"
+        )
+
+        # Videoレコードを作成
+        video = Video(
+            title=title,
+            cloudinary_url=video_url,
+            user_id=user_id,
+            company_id=g.current_user.company_id,
+        )
+        db.session.add(video)
+        db.session.commit()
+
+        return jsonify({
+            "message": "アップロード成功",
+            "video_id": video.id
+        })
+
+    except Exception as e:
+        print("[ERROR] upload_video:", e)
+        return jsonify({"error": str(e)}), 500
+
+
 ###############################################################################
 # LINE Webhook
 ###############################################################################
