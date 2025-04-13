@@ -862,6 +862,7 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
   let attempts = 0;
   const poller = setInterval(function () {
     attempts++;
+
     $.ajax({
       url: "/videos/" + videoId + "/view",
       type: "GET",
@@ -884,8 +885,14 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
         console.error("ポーリングエラー:", xhr);
       }
     });
+
+    if (attempts >= maxAttempts) {
+      clearInterval(poller);
+      $("#upload-result").text("解析に時間がかかりすぎています。後ほど再度お試しください。");
+    }
   }, interval);
 }
+
 
 
 
