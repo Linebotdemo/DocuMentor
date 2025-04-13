@@ -860,16 +860,16 @@
       // ----------------------------------------------------------------------
 function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
   let attempts = 0;
-  const poller = setInterval(function() {
+  const poller = setInterval(function () {
     $.ajax({
       url: "/videos/" + videoId + "/view",
       type: "GET",
-      headers: { "Authorization": "Bearer " + jwtToken },
-      success: function(data) {
+      headers: { Authorization: "Bearer " + jwtToken },
+      success: function (data) {
         console.log("ポーリング結果:", data);
         if (
-          data.summary_text && data.summary_text !== "要約がありません" &&
-          data.quiz_text && data.quiz_text !== "クイズがありません"
+          data.summary_text !== "要約がありません" ||
+          data.quiz_text !== "クイズがありません"
         ) {
           clearInterval(poller);
           $("#upload-result").text("動画解析完了！");
@@ -878,11 +878,14 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
             "\n\nクイズ: " + (data.quiz_text || "（クイズなし）")
           );
         }
-      },  // ← カンマをつける！
-      error: function(xhr) {
+      },
+      error: function (xhr) {
         console.error("ポーリングエラー:", xhr);
       }
     });
+  }, interval);
+}
+
 
     attempts++;
     if (attempts >= maxAttempts) {

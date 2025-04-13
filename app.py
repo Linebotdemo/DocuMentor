@@ -1052,7 +1052,7 @@ def view_video(video_id):
         "created_at": to_jst(video.created_at),
         "cloudinary_url": video.cloudinary_url,
         "summary_text": video.summary_text or "要約がありません",
-        "quiz_text": quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else "クイズがありません"
+        "quiz_text": (quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else video.quiz_text) or "クイズがありません"
     })
 
 ###############################################################################
