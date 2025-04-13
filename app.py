@@ -966,7 +966,6 @@ def upload_video():
             company_id=g.current_user.company_id,
             generation_mode=generation_mode
         )
-        video.quiz_text = quiz_text
         db.session.add(video)
         db.session.commit()
 
