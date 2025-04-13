@@ -792,14 +792,13 @@ def view_video_result(video_id):
 @app.route("/debug/summary/<int:video_id>")
 def debug_summary(video_id):
     video = Video.query.get(video_id)
+    quiz = Quiz.query.filter_by(video_id=video_id).first()
     return jsonify({
         "video_id": video.id,
         "summary_text": video.summary_text,
-        "quiz_text": video.quiz_text
+        "video.quiz_text": video.quiz_text,
+        "quiz.auto_quiz_text": quiz.auto_quiz_text if quiz else "なし"
     })
-
-
-
 
 
 
@@ -967,6 +966,7 @@ def upload_video():
             company_id=g.current_user.company_id,
             generation_mode=generation_mode
         )
+        video.quiz_text = quiz_text
         db.session.add(video)
         db.session.commit()
 
