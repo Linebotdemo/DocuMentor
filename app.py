@@ -968,6 +968,9 @@ def upload_video():
         )
         db.session.add(video)
         db.session.commit()
+        except Exception as e:
+            print(f"[ERROR] Video DB登録失敗: {str(e)}")
+            return jsonify({"error": f"動画DB登録中にエラーが発生: {str(e)}"}), 500
 
         # 3) 画像ファイルがあればOCR
         image_files = request.files.getlist("image_files")
