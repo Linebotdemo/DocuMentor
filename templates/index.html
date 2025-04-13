@@ -867,14 +867,14 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
       headers: { "Authorization": "Bearer " + jwtToken },
     success: function(data){
         console.log("ポーリング結果:", data); // ★追加
-       if (data.summary_text && data.summary_text !== "要約がありません") {
+       if ((data.summary_text && data.summary_text !== "要約がありません") || data.quiz_text) {
     clearInterval(poller);
     $("#upload-result").text("動画解析完了！");
-    $("#generated-content").val("要約: " + data.summary_text + "\n\nクイズ: " + data.quiz_text);
-  } else {
-    console.log("まだ解析中です...");
-  }
-},
+     $("#generated-content").val(
+    "要約: " + (data.summary_text || "（要約なし）") +
+    "\n\nクイズ: " + (data.quiz_text || "（クイズなし）")
+  );
+}
 
       error: function(xhr){
         console.error("ポーリングエラー:", xhr);
