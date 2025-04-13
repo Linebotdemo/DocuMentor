@@ -965,6 +965,7 @@ def upload_video():
             cloudinary_url=video_url,
             user_id=user_id,
             company_id=g.current_user.company_id
+            generation_mode=generation_mode
         )
         db.session.add(video)
         db.session.commit()
