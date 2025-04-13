@@ -867,7 +867,8 @@ function pollVideoStatus(videoId, interval = 5000, maxAttempts = 60) {
       headers: { "Authorization": "Bearer " + jwtToken },
       success: function(data) {
         console.log("ポーリング結果:", data);
-        if ((data.summary_text && data.summary_text !== "要約がありません") || data.quiz_text) {
+        if ((data.summary_text && data.summary_text !== "要約がありません") || 
+          (data.quiz_text && data.quiz_text !== "クイズがありません")) {
           clearInterval(poller);
           $("#upload-result").text("動画解析完了！");
           $("#generated-content").val(
