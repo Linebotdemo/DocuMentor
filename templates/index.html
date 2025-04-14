@@ -779,7 +779,7 @@
             // 「編集」→ Cloudinary PDF を新タブで開く
             tr.append(`
               <td>
-                <button class="btn btn-sm btn-primary" onclick="openDocInNewTab(${doc.id})">編集</button>
+                <button class="btn btn-sm btn-primary" onclick="openDocInNewTab(${doc.id})">開く</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteDoc(${doc.id})">削除</button>
               </td>
             `);
@@ -832,11 +832,15 @@
 
 // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
 window.openDocInNewTab = function(docId) {
+  // JWTトークンがある場合だけ Authorization ヘッダーを付ける
+  const headers = {};
+  if (jwtToken) {
+    headers['Authorization'] = 'Bearer ' + jwtToken;
+  }
+
   fetch(`/documents/${docId}/inline_proxy`, {
     method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + jwtToken
-    }
+    headers: headers
   })
   .then(response => {
     if (!response.ok) {

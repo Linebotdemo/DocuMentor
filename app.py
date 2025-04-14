@@ -10,6 +10,8 @@ from celery import Celery
 # from app import db, Video
 from tasks import transcribe_video_task
 from flask import Response, jsonify, g
+from flask import Response, request
+from your_jwt_module import get_jwt_user
 
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
@@ -861,23 +863,30 @@ def update_transcription(video_id):
 
 
 @app.route("/documents/<int:doc_id>/inline_proxy", methods=["GET"])
-@jwt_required
 def inline_proxy(doc_id):
     try:
+        token = request.args.get("token")
+        auth_header = request.headers.get("Authorization")
+
         doc = Document.query.get_or_404(doc_id)
 
-        # アクセス制限（env 以外は同一企業のみ許可）
-        if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
-            return jsonify({"error": "他社のPDFは表示できません"}), 403
+        # 認可チェック（LINEトークン or JWT）
+        if token:
+            if not is_valid_temp_token(token, doc_id):  # トークン検証ロジックは実装済みのものを使用
+                return jsonify({"error": "無効または期限切れのトークンです"}), 403
+        elif auth_header:
+            user = get_jwt_user(auth_header)  # JWTヘッダーからユーザーを復元
+            if not user or (user.role != 'env' and user.company_id != doc.company_id):
+                return jsonify({"error": "権限がありません"}), 403
+        else:
+            return jsonify({"error": "Authorization header is missing"}), 401
 
-        # CloudinaryからPDFを取得（resource_type=raw 前提）
+        # CloudinaryからPDFを取得（resource_type="raw"）
         cloud_url = doc.cloudinary_url
         response = requests.get(cloud_url, stream=True)
-
         if response.status_code != 200:
             return jsonify({"error": "CloudinaryからPDFを取得できませんでした"}), 500
 
-        # ストリーミング返却（Content-Disposition: inline に変更）
         def generate():
             for chunk in response.iter_content(chunk_size=8192):
                 yield chunk
@@ -892,6 +901,23 @@ def inline_proxy(doc_id):
     except Exception as e:
         print(f"[ERROR] inline_proxy: {e}")
         return jsonify({"error": "PDF表示中にエラーが発生しました"}), 500
+
+def is_valid_temp_token(token, doc_id):
+    try:
+        payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+        return payload.get("doc_id") == doc_id and datetime.utcnow() < datetime.fromtimestamp(payload["exp"])
+    except Exception as e:
+        print(f"[TOKEN CHECK FAILED]: {e}")
+        return False
+
+def get_jwt_user(auth_header):
+    try:
+        token = auth_header.split(" ")[1]
+        payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+        return User.query.get(payload["user_id"])
+    except Exception as e:
+        print(f"[JWT Decode Error]: {e}")
+        return None
 
 
 
