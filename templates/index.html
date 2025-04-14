@@ -855,16 +855,7 @@ window.openDocInNewTab = function(docId) {
             alert("PDFプレビューの取得に失敗しました");
         }
     });
-}
-
-
-
-          error: function(xhr){
-            console.error("PDFプレビューURL生成エラー:", xhr);
-            alert("PDFプレビューの取得に失敗しました");
-          }
-        });
-      };
+};
 
       // リアルタイム絞り込み
       $("#search-keyword").on("input", function(){
