@@ -954,7 +954,7 @@ def upload_video():
 
         generation_mode = request.form.get("generation_mode", "manual")
 
-        # 1) Cloudinaryへアップロード（try内に入れる）
+        # 1) Cloudinaryへアップロード（動画）
         try:
             video_url = upload_to_cloudinary(
                 file,
@@ -981,26 +981,65 @@ def upload_video():
             print(f"[ERROR] Video DB登録失敗: {str(e)}")
             return jsonify({"error": f"動画DB登録中にエラーが発生: {str(e)}"}), 500
 
-        # 3) 画像ファイルがあればOCR
+        # 3) 画像ファイルがあればOCR + Cloudinary保存 + Step登録
         image_files = request.files.getlist("image_files")
         ocr_results = []
         if image_files:
-            for image in image_files:
-                # OCR用に一時保存
+            for idx, image in enumerate(image_files):
                 img_filename = secure_filename(image.filename)
                 temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"ocr_{img_filename}")
                 image.save(temp_path)
+
+                # Cloudinaryへアップロード
+                try:
+                    uploaded = cloudinary.uploader.upload(
+                        temp_path,
+                        resource_type="auto",
+                        folder="documentor/captures",
+                        use_filename=True,
+                        unique_filename=True
+                    )
+                    image_url = uploaded.get("secure_url")
+                except Exception as e:
+                    print(f"[ERROR] Cloudinary画像アップロード失敗: {str(e)}")
+                    image_url = None
+
+                # OCR処理
                 try:
                     img_obj = Image.open(temp_path)
                     ocr_text = pytesseract.image_to_string(img_obj, lang='jpn')
                     ocr_results.append(f"画像 {img_filename} のOCR結果:\n{ocr_text.strip()}")
                 except Exception as e:
+                    ocr_text = f"OCR失敗: {str(e)}"
                     ocr_results.append(f"画像 {img_filename} のOCR失敗: {str(e)}")
                 finally:
                     try:
                         os.remove(temp_path)
                     except Exception:
                         pass
+
+                # VideoStep + StepAttachment 保存
+                if image_url:
+                    try:
+                        step = VideoStep(
+                            video_id=video.id,
+                            title=f"キャプチャ画像 {idx + 1}",
+                            description=ocr_text.strip()[:1000],
+                            order=idx + 1
+                        )
+                        db.session.add(step)
+                        db.session.flush()  # step.id を確保
+
+                        attachment = StepAttachment(
+                            step_id=step.id,
+                            cloudinary_url=image_url,
+                            filetype="image"
+                        )
+                        db.session.add(attachment)
+                    except Exception as e:
+                        print(f"[ERROR] ステップ保存失敗: {str(e)}")
+
+            db.session.commit()
 
         if ocr_results:
             video.ocr_text = "\n".join(ocr_results)
@@ -1026,6 +1065,7 @@ def upload_video():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/videos/my', methods=['GET'])
 @login_required

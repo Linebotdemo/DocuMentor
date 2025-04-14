@@ -832,27 +832,31 @@
 
 // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
 window.openDocInNewTab = function(docId) {
-    // サーバー側で fl_attachment=false を付与したURLを生成してもらう
-    $.ajax({
-        url: "/documents/" + docId + "/generate_view_link",
-        type: "POST",
-        headers: {
-            "Authorization": "Bearer " + jwtToken
-        },
-        success: function(data) {
-            if (data.view_url) {
-                // 「fl_attachment=false」をURL末尾に明示的に付けてプレビュー表示にする
-                window.open(data.view_url, "_blank");
-            } else {
-                alert("プレビューURLの取得に失敗しました");
-            }
-        },
-        error: function(xhr) {
-            console.error("PDFプレビューURL生成エラー:", xhr);
-            alert("PDFプレビューの取得に失敗しました");
-        }
-    });
+  // サーバー側で CloudinaryのPDF表示URLを取得する
+  $.ajax({
+    url: "/documents/" + docId + "/generate_view_link",
+    type: "POST",
+    headers: {
+      "Authorization": "Bearer " + jwtToken
+    },
+    success: function(data) {
+      if (data.view_url) {
+        // 開く前にURLをログ出力（確認用）
+        console.log("📄 PDF表示URL:", data.view_url);
+
+        // 新しいタブでPDFを開く（自動で閉じないかの確認にも使える）
+        window.open(data.view_url, "_blank");
+      } else {
+        alert("プレビューURLの取得に失敗しました");
+      }
+    },
+    error: function(xhr) {
+      console.error("PDFプレビューURL生成エラー:", xhr);
+      alert("PDFプレビューの取得に失敗しました");
+    }
+  });
 };
+
 
       // リアルタイム絞り込み
       $("#search-keyword").on("input", function(){
