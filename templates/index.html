@@ -832,33 +832,9 @@
 
 // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
 window.openDocInNewTab = function(docId) {
-  // サーバー側で CloudinaryのPDF表示URLを取得する
-  $.ajax({
-    url: "/documents/" + docId + "/generate_view_link",
-    type: "POST",
-    headers: {
-      "Authorization": "Bearer " + jwtToken
-    },
-    success: function(data) {
-      if (data.view_url) {
-        // URL末尾に fl_attachment=false を追加してプレビュー表示に切り替える
-        const previewUrl = data.view_url.includes("?")
-          ? data.view_url + "&fl_attachment=false"
-          : data.view_url + "?fl_attachment=false";
-
-        console.log("📄 プレビューURL:", previewUrl);
-
-        // 新しいタブでPDFを開く
-        window.open(previewUrl, "_blank");
-      } else {
-        alert("プレビューURLの取得に失敗しました");
-      }
-    },
-    error: function(xhr) {
-      console.error("PDFプレビューURL生成エラー:", xhr);
-      alert("PDFプレビューの取得に失敗しました");
-    }
-  });
+  const previewUrl = `/documents/${docId}/inline_proxy`;
+  console.log("📄 プレビューURL:", previewUrl);
+  window.open(previewUrl, "_blank");
 };
 
 
