@@ -1627,7 +1627,8 @@ def generate_view_link(doc_id):
         public_id,
         resource_type="raw",
         type="upload",
-        flags="attachment:false"
+        secure=True,
+        inline=True"
     )
 
     return jsonify({"view_url": preview_url})
