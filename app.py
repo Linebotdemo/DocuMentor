@@ -776,21 +776,22 @@ def process_video(video_id):
     return jsonify({"status": "task submitted"})
 
 @app.route("/videos/<int:video_id>/view", methods=["GET"])
-def view_video_result(video_id):
+@jwt_required
+def view_video(video_id):
     try:
-        video = Video.query.get(video_id)
-        if not video:
-            return jsonify({"error": "video not found"}), 404
-
+        video = Video.query.get_or_404(video_id)
         return jsonify({
-            "summary_text": video.summary_text or "要約がありません",  # ←ここ！
+            "summary_text": video.summary_text or "要約がありません",
             "quiz_text": video.quiz_text or "クイズがありません"
         })
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/debug/video_quiz/<int:video_id>")
+def debug_quiz(video_id):
+    video = Video.query.get(video_id)
+    return video.quiz_text or "なし"
 
 @app.route("/debug/summary/<int:video_id>")
 def debug_summary(video_id):
