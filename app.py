@@ -639,7 +639,7 @@ def handle_line_text(event):
             domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
             for doc in docs:
                 token = generate_temp_pdf_token(doc.id)
-                link = f"{domain}/documents/{doc.id}/view_pdf?token={token}"
+                link = generate_view_link_direct(doc.cloudinary_url)
                 try:
                     line_bot_api.push_message(
                         user.line_id,
@@ -1553,7 +1553,9 @@ def document_view_pdf(doc_id):
     doc = Document.query.get_or_404(doc_id)
 
     # ✅ CloudinaryのURLにリダイレクト（ローカルパス不要！）
-    return redirect(doc.cloudinary_url)
+    preview_url = generate_view_link_direct(doc.cloudinary_url)
+    return redirect(preview_url)
+
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
 @jwt_required
