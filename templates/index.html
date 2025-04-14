@@ -832,10 +832,28 @@
 
 // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
 window.openDocInNewTab = function(docId) {
-  const previewUrl = `/documents/${docId}/inline_proxy`;
-  console.log("📄 プレビューURL:", previewUrl);
-  window.open(previewUrl, "_blank");
+  fetch(`/documents/${docId}/inline_proxy`, {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + jwtToken
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error("PDF取得失敗");
+    }
+    return response.blob();
+  })
+  .then(blob => {
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+  })
+  .catch(err => {
+    console.error("PDF表示エラー:", err);
+    alert("PDFのプレビューに失敗しました");
+  });
 };
+
 
 
 
