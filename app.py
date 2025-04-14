@@ -379,14 +379,12 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         result = cloudinary.uploader.upload(
             file_stream,
-            resource_type=resource_type,
+            resource_type="raw",
             folder=folder,
-             type="upload",
             public_id=public_id_prefix,
             use_filename=True,
             unique_filename=True,
-            overwrite=True,
-            access_mode="public"
+            overwrite=True
         )
         return result["secure_url"]
     except Exception as e:
@@ -1572,7 +1570,7 @@ def generate_view_link(doc_id):
     token = generate_temp_pdf_token(doc_id)
     domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
     view_url = f"{domain}/documents/{doc_id}/view_pdf?token={token}"
-    return jsonify({"view_url": view_url})
+     return jsonify({"view_url": doc.cloudinary_url})
 
 
 ###############################################################################
