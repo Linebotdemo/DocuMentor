@@ -9,6 +9,7 @@ from functools import wraps
 from celery import Celery
 # from app import db, Video
 from tasks import transcribe_video_task
+from flask import Response, jsonify, g
 
 
 
@@ -373,14 +374,13 @@ def generate_temp_pdf_token(doc_id):
     token = jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm="HS256")
     return token
 
-def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor", public_id_prefix=None):
+def upload_to_cloudinary(file_stream, resource_type="raw", folder="documentor", public_id_prefix=None):
     try:
         if not public_id_prefix:
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         result = cloudinary.uploader.upload(
             file_stream,
-            resource_type="image",
-            format="pdf",
+            resource_type=resource_type,
             folder=folder,
             public_id=public_id_prefix,
             use_filename=True,
@@ -858,6 +858,36 @@ def update_transcription(video_id):
     video.whisper_text = whisper_text
     db.session.commit()
     return jsonify({"message": "Transcription updated"})
+
+
+
+@app.route("/documents/<int:doc_id>/inline_proxy", methods=["GET"])
+@jwt_required
+def inline_proxy(doc_id):
+    doc = Document.query.get_or_404(doc_id)
+    # 会社IDチェックや権限チェック等あれば挿入
+
+    # 1) CloudinaryにあるPDFをGET
+    cloud_url = doc.cloudinary_url
+    r = requests.get(cloud_url, stream=True)
+    if r.status_code != 200:
+        return jsonify({"error": "Failed to retrieve PDF from Cloudinary"}), 500
+
+    # 2) responseをストリーミング返却。 Content-Type: application/pdf, inline 指定。
+    def generate():
+        for chunk in r.iter_content(chunk_size=8192):
+            yield chunk
+
+    return Response(
+        generate(),
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="view.pdf"'
+        }
+    )
+
+
+
 
 ###############################################################################
 # PDFリンク共有
@@ -1533,7 +1563,7 @@ def generate_view_link(doc_id):
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
 
     original_url = doc.cloudinary_url
-    # "/raw/upload/" → "/raw/upload/fl_attachment:false/"
+    "/raw/upload/fl_attachment:false/"
     # "/image/upload/" のPDFなら、"/image/upload/fl_attachment:false/" に書き換える (が本来推奨しない)
     preview_url = original_url
     if "/raw/upload/" in original_url:
