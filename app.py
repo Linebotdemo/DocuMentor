@@ -666,6 +666,30 @@ def handle_line_text(event):
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=default_reply))
 
+@app.route('/documents/<int:doc_id>/delete', methods=['POST'])
+@jwt_required
+def delete_document(doc_id):
+    try:
+        # env / admin 権限のみ許可
+        if g.current_user.role not in ['env', 'admin']:
+            return jsonify({"error": "Access denied"}), 403
+
+        doc = Document.query.get_or_404(doc_id)
+
+        # env以外(=admin)の場合は同一会社かチェック
+        if g.current_user.role != 'env':
+            if doc.company_id != g.current_user.company_id:
+                return jsonify({"error": "他社のPDFは削除できません"}), 403
+
+        db.session.delete(doc)
+        db.session.commit()
+        return jsonify({"message": "PDFを削除しました"})
+    except Exception as ex:
+        print("PDF削除エラー:", ex)
+        return jsonify({"error": "PDF削除に失敗しました"}), 500
+
+
+
 
 ###############################################################################
 # LINE連携無効
@@ -1513,9 +1537,12 @@ def generate_view_link(doc_id):
     if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
 
-    # ✅ attachment=false を付与して直接表示できるURLを返す
+    # Cloudinary 側で添付ダウンロードではなく「inline」表示を期待させる設定
+    # （/upload/ の後ろに fl_attachment:false を付与）
     view_url = doc.cloudinary_url.replace("/upload/", "/upload/fl_attachment:false/")
+
     return jsonify({"view_url": view_url})
+
 
 
 

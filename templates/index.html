@@ -244,14 +244,12 @@
           <div id="doc-upload-result" class="mt-2"></div>
         </div>
 
-        <!-- ★ ここにPDF検索機能を追加 -->
+        <!-- ★ リアルタイム絞り込み用の検索欄 -->
         <div id="document-search-section" class="mb-4">
-          <h4>PDF検索</h4>
+          <h4>PDF絞り込み</h4>
           <div class="form-group">
-            <input type="text" id="search-keyword" class="form-control" placeholder="キーワードを入力">
+            <input type="text" id="search-keyword" class="form-control" placeholder="タイトルやカテゴリで絞り込み (入力中に即時反映)">
           </div>
-          <button id="search-btn" class="btn btn-primary">検索</button>
-          <div id="search-results" class="mt-3"></div>
         </div>
 
         <div id="document-list-section">
@@ -307,19 +305,6 @@
         </div>
       </div>
 
-      <!-- ★ 削除したいPDF検索セクション(独立)をここから削除 -->
-      <!--
-      <div id="section-search" class="section hidden">
-        <h3>PDF検索</h3>
-        <div class="form-group">
-          <input type="text" id="search-keyword" class="form-control" placeholder="キーワードを入力">
-        </div>
-        <button id="search-btn" class="btn btn-primary">検索</button>
-        <div id="search-results" class="mt-3"></div>
-      </div>
-      -->
-      <!-- ★ 削除済み -->
-
       <!-- アカウント管理セクション -->
       <div id="section-account" class="section hidden">
         <h3>アカウント管理</h3>
@@ -374,6 +359,9 @@
       let jwtToken = "";
       let currentUserRole = "";
       let currentGenerationMode = "manual"; // 動画アップロード/生成モードを保持
+
+      // PDF管理のリアルタイム絞り込み用に全ドキュメントを保持
+      let allDocuments = [];
 
       // ----------------------------------------------------------------------
       // 画面制御関数
@@ -582,7 +570,7 @@
       // PWリセットボタン
       window.resetCompanyPassword = function(companyId) {
         const newPw = prompt("新パスワードを入力してください");
-        if(!newPw) return; // 取り消し
+        if(!newPw) return;
         $.ajax({
           url: `/companies/${companyId}/update`,
           type: "POST",
@@ -781,7 +769,7 @@
       };
 
       // ----------------------------------------------------------------------
-      // PDF管理
+      // PDF管理（リアルタイム絞り込み）
       // ----------------------------------------------------------------------
       function loadDocuments(){
         $.ajax({
@@ -789,26 +777,8 @@
           type: "GET",
           headers: { "Authorization": "Bearer " + jwtToken },
           success: function(data){
-            const tbody = $("#documents-table-body");
-            tbody.empty();
-            if(data.documents && data.documents.length>0){
-              data.documents.forEach(function(doc){
-                const tr = $("<tr></tr>");
-                tr.append("<td>"+doc.id+"</td>");
-                tr.append("<td>"+doc.title+"</td>");
-                tr.append("<td>"+doc.category+"</td>");
-                tr.append("<td>"+(doc.created_at||"")+"</td>");
-                tr.append(`
-                  <td>
-                    <button class="btn btn-sm btn-primary" onclick="openDocPreview(${doc.id})">編集</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteDoc(${doc.id})">削除</button>
-                  </td>
-                `);
-                tbody.append(tr);
-              });
-            } else {
-              tbody.html("<tr><td colspan='5' class='text-center'>PDFがありません。</td></tr>");
-            }
+            allDocuments = data.documents || [];
+            renderDocuments(allDocuments);
           },
           error: function(xhr){
             console.error("PDF一覧取得エラー:", xhr);
@@ -816,6 +786,30 @@
         });
       }
       $("#load-documents-btn").on("click", function(){ loadDocuments(); });
+
+      // 一覧表示用の共通描画関数
+      function renderDocuments(docs){
+        const tbody = $("#documents-table-body");
+        tbody.empty();
+        if(docs.length > 0){
+          docs.forEach(function(doc){
+            const tr = $("<tr></tr>");
+            tr.append("<td>"+doc.id+"</td>");
+            tr.append("<td>"+doc.title+"</td>");
+            tr.append("<td>"+doc.category+"</td>");
+            tr.append("<td>"+(doc.created_at||"")+"</td>");
+            tr.append(`
+              <td>
+                <button class="btn btn-sm btn-primary" onclick="openDocPreview(${doc.id})">編集</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteDoc(${doc.id})">削除</button>
+              </td>
+            `);
+            tbody.append(tr);
+          });
+        } else {
+          tbody.html("<tr><td colspan='5' class='text-center'>PDFがありません。</td></tr>");
+        }
+      }
 
       // 新規PDFアップロード
       $("#document-upload-form").on("submit", function(e){
@@ -839,7 +833,7 @@
         });
       });
 
-      // 削除ボタン処理
+      // PDF削除ボタン
       window.deleteDoc = function(docId) {
         if(!confirm("このPDFを削除します。よろしいですか？")) return;
         $.ajax({
@@ -857,7 +851,7 @@
         });
       };
 
-      // PDFプレビューをモーダル表示
+      // PDFプレビュー（モーダル）
       window.openDocPreview = function(docId){
         $.ajax({
           url: "/documents/"+docId+"/generate_view_link",
@@ -877,6 +871,23 @@
           }
         });
       };
+
+      // リアルタイム絞り込み
+      $("#search-keyword").on("input", function(){
+        const keyword = $(this).val().trim().toLowerCase();
+        if(!keyword){
+          // 空なら全件表示
+          renderDocuments(allDocuments);
+          return;
+        }
+        // titleかcategoryにキーワードが含まれるものを絞り込み
+        const filtered = allDocuments.filter(doc => {
+          const t = (doc.title || "").toLowerCase();
+          const c = (doc.category || "").toLowerCase();
+          return t.includes(keyword) || c.includes(keyword);
+        });
+        renderDocuments(filtered);
+      });
 
       // ----------------------------------------------------------------------
       // 動画アップロード
@@ -1084,7 +1095,7 @@
               alert(data.error);
             } else {
               alert(data.message);
-              loadDocuments();
+              loadDocuments(); // 新しく生成されたPDFを一覧に反映
             }
           },
           error: function(xhr){
@@ -1144,45 +1155,6 @@
       }
       $("#load-notifications-btn-user").on("click", function(){
         loadNotificationsForUser();
-      });
-
-      // ----------------------------------------------------------------------
-      // PDF検索（一般ユーザー用）のボタンクリックを流用
-      // ----------------------------------------------------------------------
-      $("#search-btn").on("click", function(){
-        const keyword = $("#search-keyword").val().trim();
-        if(!keyword){
-          alert("キーワードを入力してください。");
-          return;
-        }
-        $.ajax({
-          url: "/search?keyword="+encodeURIComponent(keyword),
-          type: "GET",
-          headers: { "Authorization": "Bearer " + jwtToken },
-          success: function(data){
-            const container = $("#search-results");
-            container.empty();
-            if(data.results && data.results.length>0){
-              data.results.forEach(function(doc){
-                const card = $(`
-                  <div class="card mb-2">
-                    <div class="card-body">
-                      <h5 class="card-title">${doc.title}</h5>
-                      <p class="card-text">カテゴリ: ${doc.category}</p>
-                      <p class="card-text"><small>登録日時: ${doc.created_at}</small></p>
-                    </div>
-                  </div>
-                `);
-                container.append(card);
-              });
-            } else {
-              container.html("<p>該当するPDFがありません。</p>");
-            }
-          },
-          error: function(xhr){
-            console.error("PDF検索エラー:", xhr);
-          }
-        });
       });
 
       // ----------------------------------------------------------------------
