@@ -830,21 +830,35 @@
         });
       };
 
-      // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
-      window.openDocInNewTab = function(docId){
-        // サーバー側で fl_attachment:false を付与したURLを生成してもらう
-        $.ajax({
-          url: "/documents/"+docId+"/generate_view_link",
-          type: "POST",
-          headers: { "Authorization": "Bearer " + jwtToken },
-          success: function(data){
-            if(data.view_url){
-              // 新タブで開く
-              window.open(data.view_url, '_blank');
+// 「編集」ボタン → Cloudinary PDF を新しいタブで開く
+window.openDocInNewTab = function(docId) {
+    // サーバー側で fl_attachment=false を付与したURLを生成してもらう
+    $.ajax({
+        url: "/documents/" + docId + "/generate_view_link",
+        type: "POST",
+        headers: {
+            "Authorization": "Bearer " + jwtToken
+        },
+        success: function(data) {
+            if (data.view_url) {
+                // 「fl_attachment=false」をURL末尾に明示的に付けてプレビュー表示にする
+                const previewUrl = data.view_url.includes("?")
+                    ? data.view_url + "&fl_attachment=false"
+                    : data.view_url + "?fl_attachment=false";
+                window.open(previewUrl, "_blank");
             } else {
-              alert("プレビューURLの取得に失敗しました");
+                alert("プレビューURLの取得に失敗しました");
             }
-          },
+        },
+        error: function(xhr) {
+            console.error("PDFプレビューURL生成エラー:", xhr);
+            alert("PDFプレビューの取得に失敗しました");
+        }
+    });
+};
+
+
+
           error: function(xhr){
             console.error("PDFプレビューURL生成エラー:", xhr);
             alert("PDFプレビューの取得に失敗しました");

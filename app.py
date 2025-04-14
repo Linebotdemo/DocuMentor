@@ -639,7 +639,7 @@ def handle_line_text(event):
             domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
             for doc in docs:
                 token = generate_temp_pdf_token(doc.id)
-                link = generate_view_link_direct(doc.cloudinary_url)
+                link = f"{domain}/documents/{doc.id}/view_pdf?token={token}"
                 try:
                     line_bot_api.push_message(
                         user.line_id,
@@ -864,27 +864,36 @@ def update_transcription(video_id):
 @app.route("/documents/<int:doc_id>/inline_proxy", methods=["GET"])
 @jwt_required
 def inline_proxy(doc_id):
-    doc = Document.query.get_or_404(doc_id)
-    # 会社IDチェックや権限チェック等あれば挿入
+    try:
+        doc = Document.query.get_or_404(doc_id)
 
-    # 1) CloudinaryにあるPDFをGET
-    cloud_url = doc.cloudinary_url
-    r = requests.get(cloud_url, stream=True)
-    if r.status_code != 200:
-        return jsonify({"error": "Failed to retrieve PDF from Cloudinary"}), 500
+        # アクセス制限（env 以外は同一企業のみ許可）
+        if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
+            return jsonify({"error": "他社のPDFは表示できません"}), 403
 
-    # 2) responseをストリーミング返却。 Content-Type: application/pdf, inline 指定。
-    def generate():
-        for chunk in r.iter_content(chunk_size=8192):
-            yield chunk
+        # CloudinaryからPDFを取得（resource_type=raw 前提）
+        cloud_url = doc.cloudinary_url
+        response = requests.get(cloud_url, stream=True)
 
-    return Response(
-        generate(),
-        mimetype="application/pdf",
-        headers={
-            "Content-Disposition": 'inline; filename="view.pdf"'
-        }
-    )
+        if response.status_code != 200:
+            return jsonify({"error": "CloudinaryからPDFを取得できませんでした"}), 500
+
+        # ストリーミング返却（Content-Disposition: inline に変更）
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                yield chunk
+
+        return Response(
+            generate(),
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{doc.title}.pdf"'
+            }
+        )
+    except Exception as e:
+        print(f"[ERROR] inline_proxy: {e}")
+        return jsonify({"error": "PDF表示中にエラーが発生しました"}), 500
+
 
 
 
@@ -1553,9 +1562,7 @@ def document_view_pdf(doc_id):
     doc = Document.query.get_or_404(doc_id)
 
     # ✅ CloudinaryのURLにリダイレクト（ローカルパス不要！）
-    preview_url = generate_view_link_direct(doc.cloudinary_url)
-    return redirect(preview_url)
-
+    return redirect(doc.cloudinary_url)
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
 @jwt_required
@@ -1564,16 +1571,28 @@ def generate_view_link(doc_id):
     if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
 
-    original_url = doc.cloudinary_url
-    "/raw/upload/fl_attachment:false/"
-    # "/image/upload/" のPDFなら、"/image/upload/fl_attachment:false/" に書き換える (が本来推奨しない)
-    preview_url = original_url
-    if "/raw/upload/" in original_url:
-        preview_url = original_url.replace("/raw/upload/", "/raw/upload/fl_attachment:false/")
-    elif "/image/upload/" in original_url:
-        preview_url = original_url.replace("/image/upload/", "/image/upload/fl_attachment:false/")
+    # Cloudinary URL（ファイル名と公開IDを抽出）
+    public_id = None
+    if "/upload/" in doc.cloudinary_url:
+        # 例: https://res.cloudinary.com/xxx/raw/upload/v1234567890/documentor/pdfs/sample.pdf
+        parts = doc.cloudinary_url.split("/upload/")
+        if len(parts) == 2:
+            public_id = parts[1].split(".pdf")[0]  # 拡張子除外
+
+    if not public_id:
+        return jsonify({"error": "CloudinaryのURL形式が不正です"}), 500
+
+    # PDFプレビュー用URLを生成（attachment: false を flags として付与）
+    from cloudinary.utils import cloudinary_url
+    preview_url, _ = cloudinary_url(
+        public_id,
+        resource_type="raw",
+        type="upload",
+        flags="attachment:false"
+    )
 
     return jsonify({"view_url": preview_url})
+
 
 
 ###############################################################################
