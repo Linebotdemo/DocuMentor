@@ -842,10 +842,7 @@ window.openDocInNewTab = function(docId) {
         success: function(data) {
             if (data.view_url) {
                 // 「fl_attachment=false」をURL末尾に明示的に付けてプレビュー表示にする
-                const previewUrl = data.view_url.includes("?")
-                    ? data.view_url + "&fl_attachment=false"
-                    : data.view_url + "?fl_attachment=false";
-                window.open(previewUrl, "_blank");
+                window.open(data.view_url, "_blank");
             } else {
                 alert("プレビューURLの取得に失敗しました");
             }
