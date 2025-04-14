@@ -1235,7 +1235,11 @@ def upload_document():
             resource_type="raw",
             folder="documentor/pdfs"
         )
+
+
+        print(f"[DEBUG] Cloudinaryアップロード結果 (/documents/upload): {pdf_url}")
         if not pdf_url:
+            print("[ERROR] Cloudinaryへのアップロードに失敗しました（戻り値がNone）")
             return jsonify({"error": "CloudinaryへのPDFアップロードに失敗しました"}), 500
 
         company_id = g.current_user.company_id if g.current_user.role != 'env' else None
