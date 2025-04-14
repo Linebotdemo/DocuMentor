@@ -841,11 +841,15 @@ window.openDocInNewTab = function(docId) {
     },
     success: function(data) {
       if (data.view_url) {
-        // 開く前にURLをログ出力（確認用）
-        console.log("📄 PDF表示URL:", data.view_url);
+        // URL末尾に fl_attachment=false を追加してプレビュー表示に切り替える
+        const previewUrl = data.view_url.includes("?")
+          ? data.view_url + "&fl_attachment=false"
+          : data.view_url + "?fl_attachment=false";
 
-        // 新しいタブでPDFを開く（自動で閉じないかの確認にも使える）
-        window.open(data.view_url, "_blank");
+        console.log("📄 プレビューURL:", previewUrl);
+
+        // 新しいタブでPDFを開く
+        window.open(previewUrl, "_blank");
       } else {
         alert("プレビューURLの取得に失敗しました");
       }
@@ -856,6 +860,7 @@ window.openDocInNewTab = function(docId) {
     }
   });
 };
+
 
 
       // リアルタイム絞り込み
