@@ -842,7 +842,7 @@
           headers: { "Authorization": "Bearer " + jwtToken },
           success: function(data){
             if(data.view_url){
-              $("#document-preview-iframe").attr("src", previewUrl);
+              $("#document-preview-iframe").attr("src", data.view_url);
               $("#documentPreviewModal").modal("show");
             } else {
               alert("プレビューURLの取得に失敗しました");

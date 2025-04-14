@@ -516,7 +516,6 @@ def handle_line_text(event):
         db.session.add(user)
         db.session.commit()
 
-    # 1) まず初回登録チェック
     if not user.company_id or not user.department or not user.line_display_name:
         tokens = text.split()
         if len(tokens) >= 3:
@@ -529,7 +528,6 @@ def handle_line_text(event):
                 user.department = department
                 user.line_display_name = display_name
                 db.session.commit()
-
                 reply_text = (
                     f"企業情報が登録されました。\n"
                     f"企業コード: {company.login_code}\n"
@@ -553,7 +551,6 @@ def handle_line_text(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=prompt_text))
             return
 
-    # 2) ブロック中判定
     allowed_commands_if_blocked = ["ステータス", "変更"]
     if user.is_blocked and command_text not in allowed_commands_if_blocked:
         line_bot_api.reply_message(
@@ -562,8 +559,6 @@ def handle_line_text(event):
         )
         return
 
-    # 3) コマンド判定
-    # "ステータス"
     if command_text == "ステータス":
         if user.company_id and user.department:
             company = Company.query.get(user.company_id)
@@ -575,19 +570,17 @@ def handle_line_text(event):
                 reply = "所属企業情報が不明です。"
         else:
             reply = "まだ所属企業が登録されていません。"
-
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
-    # "変更"
     if command_text == "変更":
         conversation_states[line_user_id] = {"expected": "change_request"}
         prompt_text = ("所属企業変更を開始します。\n以下の形式で送信してください。\n例: ABC123 営業部 新しい表示名")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=prompt_text))
         return
 
-    # 4) 会話状態チェック
     state = conversation_states.get(line_user_id, {})
+
     if state.get("expected") == "change_request":
         tokens = text.split()
         if len(tokens) < 3:
@@ -608,97 +601,40 @@ def handle_line_text(event):
                      f"表示名: {new_display_name}")
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=f"入力された企業コード '{company_code}' は存在しません。")
-            )
-        conversation_states.pop(line_user_id, None)
-        return
-
-    # PDF要求
-    if text.lower() == "pdf" and not state:
-        conversation_states[line_user_id] = {"expected": "pdf_option"}
-        options_text = "PDFを選択してください:\n1. マニュアル\n2. 議事録\n3. 社内規定"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=options_text))
-        return
-
-    elif state.get("expected") == "pdf_option":
-        # ... （以下の実装省略部分もそのまま保持）
-        return
-    elif state.get("expected") == "pdf_keyword":
-        # ... （以下の実装省略部分もそのまま保持）
-        return
-
-    # 既定応答
-    default_reply = (
-        "PDF   登録されているPDFが共有されます\n"
-        "ステータス   現在の登録内容が確認できます\n"
-        "変更    現在の登録内容を変更できます"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=default_reply))
-
-    # "変更"（再度）
-    if text.lower() == "変更":
-        conversation_states[line_user_id] = {"expected": "change_request"}
-        prompt_text = ("所属企業変更を開始します。\n以下の形式で送信してください。\n例: ABC123 営業部 新しい表示名")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=prompt_text))
-        return
-
-    state = conversation_states.get(line_user_id, {})
-    if state.get("expected") == "change_request":
-        tokens = text.split()
-        if len(tokens) < 3:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="入力が不十分です。例: ABC123 営業部 新しい表示名"))
-            return
-        company_code = tokens[0]
-        department = tokens[1]
-        new_display_name = " ".join(tokens[2:])
-        company = Company.query.filter_by(login_code=company_code).first()
-        if company:
-            user.company_id = company.id
-            user.department = department
-            user.line_display_name = new_display_name
-            db.session.commit()
-            reply = (f"所属企業が変更されました。\n新しい企業: {company.name}（企業コード: {company.login_code}）\n部署: {department}\n表示名: {new_display_name}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-        else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"入力された企業コード '{company_code}' は存在しません。"))
         conversation_states.pop(line_user_id, None)
         return
 
-    # PDF要求
-    # PDF要求
     if text.lower() == "pdf" and not state:
         conversation_states[line_user_id] = {"expected": "pdf_option"}
         options_text = "PDFを選択してください:\n1. マニュアル\n2. 議事録\n3. 社内規定"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=options_text))
         return
-    elif state.get("expected") == "pdf_option":
+
+    if state.get("expected") == "pdf_option":
         if text in ["1", "2", "3"]:
             conversation_states[line_user_id]["option"] = text
             conversation_states[line_user_id]["expected"] = "pdf_keyword"
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="キーワードを入力してください。"))
-            return
         else:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="1, 2, 3 のいずれかを入力してください。"))
-            return
-    elif state.get("expected") == "pdf_keyword":
-        chosen_option = state.get("option")
-        if chosen_option == "1":
-            category = "マニュアル"
-        elif chosen_option == "2":
-            category = "議事録"
-        elif chosen_option == "3":
-            category = "社内規定"
-        else:
-            category = None
+        return
 
+    if state.get("expected") == "pdf_keyword":
+        try:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="検索中です。数秒後に結果をお送りします。"))
+        except:
+            pass
+
+        chosen_option = state.get("option")
+        category = {"1": "マニュアル", "2": "議事録", "3": "社内規定"}.get(chosen_option)
         keyword = text
         docs = Document.query.filter(
             Document.company_id == user.company_id,
             Document.category == category,
             Document.title.ilike(f"%{keyword}%")
         ).all()
+
         if docs:
             domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
             for doc in docs:
@@ -712,23 +648,24 @@ def handle_line_text(event):
                 except Exception as e:
                     print(f"LINE送信エラー: {e}")
         else:
-            message = f"【検索通知】{user.line_display_name or user.username} さん、検索キーワード '{keyword}' の結果が見つかりませんでした。"
-            notif = Notification(user_id=user.id, message=message)
+            notif = Notification(user_id=user.id, message=f"【検索通知】{user.line_display_name or user.username} さん、検索キーワード '{keyword}' の結果が見つかりませんでした。")
             db.session.add(notif)
             db.session.commit()
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="該当するPDFが見つかりませんでした。"))
+            try:
+                line_bot_api.push_message(user.line_id, TextSendMessage(text="該当するPDFが見つかりませんでした。"))
+            except:
+                pass
 
         conversation_states.pop(line_user_id, None)
         return
 
-
-    # 既定応答
     default_reply = (
         "PDF   登録されているPDFが共有されます\n"
         "ステータス   現在の登録内容が確認できます\n"
         "変更    現在の登録内容を変更できます"
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=default_reply))
+
 
 ###############################################################################
 # LINE連携無効
