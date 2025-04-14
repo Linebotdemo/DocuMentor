@@ -1331,7 +1331,7 @@ def upload_document():
     if not title or not category or not file:
         return jsonify({"error": "title, category and document_file are required"}), 400
 
-    # PDFなので resource_type="raw" を指定
+    # PDFなので resource_type="auto" を指定
     try:
         result = cloudinary.uploader.upload(
             file,
@@ -1902,6 +1902,7 @@ def dashboard_route():
 
 from flask_migrate import Migrate
 migrate = Migrate(app, db)
+
 
 # === Renderなどでgunicornを使う想定だが、ローカルテストならこのままOK
 if __name__ == '__main__':
