@@ -379,7 +379,8 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         result = cloudinary.uploader.upload(
             file_stream,
-            resource_type="raw",
+            resource_type="image",
+            format="pdf",
             folder=folder,
             public_id=public_id_prefix,
             use_filename=True,
@@ -666,6 +667,7 @@ def handle_line_text(event):
         return
 
     # PDF要求
+    # PDF要求
     if text.lower() == "pdf" and not state:
         conversation_states[line_user_id] = {"expected": "pdf_option"}
         options_text = "PDFを選択してください:\n1. マニュアル\n2. 議事録\n3. 社内規定"
@@ -718,6 +720,7 @@ def handle_line_text(event):
 
         conversation_states.pop(line_user_id, None)
         return
+
 
     # 既定応答
     default_reply = (
@@ -1569,8 +1572,10 @@ def generate_view_link(doc_id):
     if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
 
-    # ✅ このインデントに注意！
-    return jsonify({"view_url": doc.cloudinary_url})
+    # ✅ attachment=false を付与して直接表示できるURLを返す
+    view_url = doc.cloudinary_url.replace("/upload/", "/upload/fl_attachment:false/")
+    return jsonify({"view_url": view_url})
+
 
 
 
