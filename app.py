@@ -788,10 +788,12 @@ def view_video(video_id):
         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route("/debug/video_quiz/<int:video_id>")
 def debug_quiz(video_id):
     video = Video.query.get(video_id)
     return video.quiz_text or "なし"
+
 
 @app.route("/debug/summary/<int:video_id>")
 def debug_summary(video_id):
@@ -1039,22 +1041,6 @@ def get_my_videos():
         ]
     })
 
-@app.route('/videos/<int:video_id>/view', methods=['GET'])
-@jwt_required
-def view_video(video_id):
-    video = Video.query.get_or_404(video_id)
-    if g.current_user.role != 'env':
-        if video.company_id != g.current_user.company_id:
-            return jsonify({"error": "他社の動画は閲覧できません"}), 403
-    quiz = Quiz.query.filter_by(video_id=video.id).first()
-    return jsonify({
-        "id": video.id,
-        "title": video.title,
-        "created_at": to_jst(video.created_at),
-        "cloudinary_url": video.cloudinary_url,
-        "summary_text": video.summary_text or "要約がありません",
-        "quiz_text": (quiz.auto_quiz_text if quiz and quiz.auto_quiz_text else video.quiz_text) or "クイズがありません"
-    })
 
 ###############################################################################
 # ステップ画像アップロード（まだクラウド対応したい場合は書き換え可）
