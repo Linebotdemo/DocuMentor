@@ -67,8 +67,6 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', 'your-openai-api-key')
-openai.api_key = app.config['OPENAI_API_KEY']
 conversation_states = {}
 
 # PDFKit設定
