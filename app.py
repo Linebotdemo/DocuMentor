@@ -12,7 +12,6 @@ from tasks import transcribe_video_task
 from flask import Response, jsonify, g
 
 
-
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
