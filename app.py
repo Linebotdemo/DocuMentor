@@ -1241,47 +1241,42 @@ def delete_company(company_id):
 @app.route('/documents/upload', methods=['POST'])
 @jwt_required
 def upload_document():
-    try:
-        if g.current_user.role not in ['env', 'admin']:
-            return jsonify({"error": "Access denied"}), 403
-        data = request.form
-        title = data.get("title")
-        category = data.get("category")
-        file = request.files.get("document_file")
-        if not title or not category or not file:
-            return jsonify({"error": "title, category and document_file are required"}), 400
-        if category not in ["マニュアル", "社内規定", "議事録"]:
-            return jsonify({"error": "カテゴリはマニュアル、社内規定、議事録のいずれかです"}), 400
+    if g.current_user.role not in ['env', 'admin']:
+        return jsonify({"error": "Access denied"}), 403
 
-        # Cloudinaryにアップロード（PDFは resource_type="raw" が無難）
-        pdf_url = upload_to_cloudinary(
+    data = request.form
+    title = data.get("title")
+    category = data.get("category")
+    file = request.files.get("document_file")
+
+    if not title or not category or not file:
+        return jsonify({"error": "title, category and document_file are required"}), 400
+
+    # PDFなので resource_type="raw" を指定
+    try:
+        result = cloudinary.uploader.upload(
             file,
             resource_type="raw",
-            folder="documentor/pdfs"
+            folder="documentor/pdfs",
+            use_filename=True,
+            unique_filename=True
         )
+        pdf_url = result["secure_url"]  # 例: https://res.cloudinary.com/xxx/raw/upload/v1234567/documentor/pdfs/abc.pdf
+    except Exception as e:
+        print(f"Cloudinary error: {e}")
+        return jsonify({"error": "PDFアップロードに失敗しました"}), 500
 
+    company_id = g.current_user.company_id if g.current_user.role != 'env' else None
+    doc = Document(
+        title=title,
+        cloudinary_url=pdf_url,
+        category=category,
+        company_id=company_id
+    )
+    db.session.add(doc)
+    db.session.commit()
 
-        print(f"[DEBUG] Cloudinaryアップロード結果 (/documents/upload): {pdf_url}")
-        if not pdf_url:
-            print("[ERROR] Cloudinaryへのアップロードに失敗しました（戻り値がNone）")
-            return jsonify({"error": "CloudinaryへのPDFアップロードに失敗しました"}), 500
-
-        company_id = g.current_user.company_id if g.current_user.role != 'env' else None
-
-        doc = Document(
-            title=title,
-            cloudinary_url=pdf_url,
-            department="",
-            category=category,
-            company_id=company_id
-        )
-        db.session.add(doc)
-        db.session.commit()
-        return jsonify({"message": "Document uploaded", "document_id": doc.id})
-    except Exception as ex:
-        print("PDFアップロードエラー:", ex)
-        return jsonify({"error": f"PDFアップロードに失敗しました: {str(ex)}"}), 500
-
+    return jsonify({"message": "Document uploaded", "document_id": doc.id})
 @app.route('/documents/<int:doc_id>/update', methods=['POST'])
 @jwt_required
 def update_document(doc_id):
@@ -1537,14 +1532,16 @@ def generate_view_link(doc_id):
     if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
 
-    # Cloudinary 側で添付ダウンロードではなく「inline」表示を期待させる設定
-    # （/upload/ の後ろに fl_attachment:false を付与）
-    view_url = doc.cloudinary_url.replace("/upload/", "/upload/fl_attachment:false/")
+    original_url = doc.cloudinary_url
+    # "/raw/upload/" → "/raw/upload/fl_attachment:false/"
+    # "/image/upload/" のPDFなら、"/image/upload/fl_attachment:false/" に書き換える (が本来推奨しない)
+    preview_url = original_url
+    if "/raw/upload/" in original_url:
+        preview_url = original_url.replace("/raw/upload/", "/raw/upload/fl_attachment:false/")
+    elif "/image/upload/" in original_url:
+        preview_url = original_url.replace("/image/upload/", "/image/upload/fl_attachment:false/")
 
-    return jsonify({"view_url": view_url})
-
-
-
+    return jsonify({"view_url": preview_url})
 
 
 ###############################################################################
