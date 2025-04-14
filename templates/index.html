@@ -53,7 +53,7 @@
     <h2 class="text-center">ログイン</h2>
     <form id="login-form">
       <div class="form-group">
-        <label for="login-username">ユーザー名または企業コード</label>
+        <label for="login-username">ユーザー名</label>
         <input type="text" class="form-control" id="login-username" required>
       </div>
       <div class="form-group">
@@ -244,7 +244,6 @@
           <div id="doc-upload-result" class="mt-2"></div>
         </div>
 
-        <!-- ★ リアルタイム絞り込み用の検索欄 -->
         <div id="document-search-section" class="mb-4">
           <h4>PDF絞り込み</h4>
           <div class="form-group">
@@ -327,26 +326,6 @@
           </div>
           <button type="submit" class="btn btn-primary">更新する</button>
         </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- PDFプレビュー用モーダル（編集ボタンを押した時に表示） -->
-  <div class="modal fade" id="documentPreviewModal" tabindex="-1" role="dialog" aria-labelledby="documentPreviewModalLabel" aria-modal="true">
-    <div class="modal-dialog modal-xl" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 id="documentPreviewModalLabel" class="modal-title">PDFプレビュー</h5>
-          <button type="button" class="close" data-dismiss="modal" aria-label="閉じる">
-            <span aria-hidden="true">&times;</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <iframe id="document-preview-iframe" style="width:100%; height:700px;" frameborder="0"></iframe>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-dismiss="modal">閉じる</button>
-        </div>
       </div>
     </div>
   </div>
@@ -681,7 +660,6 @@
         showUserSection("documents");
         loadDocuments();
       });
-      // 「PDF検索」ボタンは削除済み
       $("#nav-account").on("click", function(){
         showUserSection("account");
       });
@@ -798,9 +776,10 @@
             tr.append("<td>"+doc.title+"</td>");
             tr.append("<td>"+doc.category+"</td>");
             tr.append("<td>"+(doc.created_at||"")+"</td>");
+            // 「編集」→ Cloudinary PDF を新タブで開く
             tr.append(`
               <td>
-                <button class="btn btn-sm btn-primary" onclick="openDocPreview(${doc.id})">編集</button>
+                <button class="btn btn-sm btn-primary" onclick="openDocInNewTab(${doc.id})">編集</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteDoc(${doc.id})">削除</button>
               </td>
             `);
@@ -851,16 +830,17 @@
         });
       };
 
-      // PDFプレビュー（モーダル）
-      window.openDocPreview = function(docId){
+      // 「編集」ボタン → Cloudinary PDF を新しいタブで開く
+      window.openDocInNewTab = function(docId){
+        // サーバー側で fl_attachment:false を付与したURLを生成してもらう
         $.ajax({
           url: "/documents/"+docId+"/generate_view_link",
           type: "POST",
           headers: { "Authorization": "Bearer " + jwtToken },
           success: function(data){
             if(data.view_url){
-              $("#document-preview-iframe").attr("src", data.view_url);
-              $("#documentPreviewModal").modal("show");
+              // 新タブで開く
+              window.open(data.view_url, '_blank');
             } else {
               alert("プレビューURLの取得に失敗しました");
             }
@@ -876,11 +856,10 @@
       $("#search-keyword").on("input", function(){
         const keyword = $(this).val().trim().toLowerCase();
         if(!keyword){
-          // 空なら全件表示
           renderDocuments(allDocuments);
           return;
         }
-        // titleかcategoryにキーワードが含まれるものを絞り込み
+        // タイトルかカテゴリにキーワードが含まれるものを絞り込み
         const filtered = allDocuments.filter(doc => {
           const t = (doc.title || "").toLowerCase();
           const c = (doc.category || "").toLowerCase();
