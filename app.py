@@ -1567,10 +1567,10 @@ def generate_view_link(doc_id):
     doc = Document.query.get_or_404(doc_id)
     if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
-    token = generate_temp_pdf_token(doc_id)
-    domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
-    view_url = f"{domain}/documents/{doc_id}/view_pdf?token={token}"
-     return jsonify({"view_url": doc.cloudinary_url})
+
+    # ✅ このインデントに注意！
+    return jsonify({"view_url": doc.cloudinary_url})
+
 
 
 ###############################################################################
