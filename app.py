@@ -24,7 +24,6 @@ import cloudinary
 import cloudinary.uploader
 import pytz
 import pdfkit
-import openai
 import jwt
 import requests
 

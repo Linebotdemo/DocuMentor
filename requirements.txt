@@ -3,7 +3,6 @@ Flask-Login==0.6.2
 Flask-SQLAlchemy==3.0.5
 gunicorn==20.1.0
 cloudinary==1.32.0
-openai==0.27.0
 pytesseract==0.3.10
 Pillow==9.5.0
 pdfkit==1.0.0
