@@ -11,6 +11,7 @@ from celery import Celery
 from tasks import transcribe_video_task
 
 
+
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -380,10 +381,12 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
             file_stream,
             resource_type=resource_type,
             folder=folder,
+             type="upload",
             public_id=public_id_prefix,
             use_filename=True,
             unique_filename=True,
-            overwrite=True
+            overwrite=True,
+            access_mode="public"
         )
         return result["secure_url"]
     except Exception as e:
@@ -1561,15 +1564,16 @@ def document_view_pdf(doc_id):
     return redirect(doc.cloudinary_url)
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
-@login_required
+@jwt_required
 def generate_view_link(doc_id):
     doc = Document.query.get_or_404(doc_id)
-    if current_user.role != 'env' and doc.company_id != current_user.company_id:
+    if g.current_user.role != 'env' and doc.company_id != g.current_user.company_id:
         return jsonify({"error": "他社のPDFはリンク生成できません"}), 403
     token = generate_temp_pdf_token(doc_id)
     domain = os.getenv("APP_DOMAIN", "http://127.0.0.1:5000")
     view_url = f"{domain}/documents/{doc_id}/view_pdf?token={token}"
     return jsonify({"view_url": view_url})
+
 
 ###############################################################################
 # 通知 + 検索ログ
