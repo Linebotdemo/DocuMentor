@@ -384,7 +384,7 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
             public_id=public_id_prefix,
             use_filename=True,
             unique_filename=True,
-            overwrite=True
+            overwrite=True,
             type="upload"
         )
         return result["secure_url"]
