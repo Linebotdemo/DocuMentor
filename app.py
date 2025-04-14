@@ -385,6 +385,7 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
             use_filename=True,
             unique_filename=True,
             overwrite=True
+            type="upload"
         )
         return result["secure_url"]
     except Exception as e:
