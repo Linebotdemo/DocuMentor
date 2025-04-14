@@ -1075,6 +1075,9 @@ def whisper_callback():
         data = request.get_json()
         video_id = data.get("video_id")
         text = data.get("text")
+        summary_text = data.get("summary_text")
+        quiz_text = data.get("quiz_text")
+
         if not video_id or not text:
             return jsonify({"error": "Missing fields"}), 400
 
@@ -1083,22 +1086,22 @@ def whisper_callback():
             return jsonify({"error": "Video not found"}), 404
 
         video.transcript = text
+        video.summary_text = summary_text
+        video.quiz_text = quiz_text
+
+        # クイズ保存も追加
+        quiz = Quiz.query.filter_by(video_id=video.id).first()
+        if not quiz:
+            quiz = Quiz(video_id=video.id, title=f"Quiz for {video.title}")
+            db.session.add(quiz)
+        quiz.auto_quiz_text = quiz_text
+
         db.session.commit()
-
-        # ✅ 安全にimportする
-        try:
-            from tasks import generate_summary_and_quiz_task
-            generate_summary_and_quiz_task.delay(video_id, text)
-        except Exception as imp_err:
-            print(f"[ERROR] 非同期タスクインポート失敗: {imp_err}")
-            return jsonify({"error": f"Import failed: {str(imp_err)}"}), 500
-
-        return jsonify({"message": "Transcription received. Task dispatched."}), 200
+        return jsonify({"message": "Transcription + Summary/Quiz saved"}), 200
 
     except Exception as e:
         print(f"[ERROR] Whisper callbackで例外発生: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/videos/<int:video_id>/steps_with_images', methods=['GET'])
@@ -1542,11 +1545,6 @@ def quiz_pdf_route(video_id):
 ###############################################################################
 @app.route('/documents/<int:doc_id>/view_pdf', methods=['GET'])
 def document_view_pdf(doc_id):
-    """
-    トークン検証後、Document.cloudinary_urlを直接返すか
-    PDFバイナリをダウンロードして返すかのどちらか。
-    ここでは例としてローカルファイルではなく、Cloudinaryから取得して返す方法にしてもよい。
-    """
     token = request.args.get("token")
     if not token:
         return jsonify({"error": "Token required"}), 401
@@ -1558,28 +1556,9 @@ def document_view_pdf(doc_id):
         return jsonify({"error": f"Invalid token: {str(e)}"}), 401
 
     doc = Document.query.get_or_404(doc_id)
-    # CloudinaryのURLにリダイレクトする例（またはダウンロードして返却）
-    # ここではサンプルとしてローカルファイルの存在チェックを残すが、実際はdoc.cloudinary_urlを利用してください
-    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], doc.cloudinary_url)
-    if not os.path.exists(pdf_path):
-        return jsonify({"error": "PDF file not found"}), 404
 
-    user_id = payload.get('user_id')
-    log_entry = PDFViewLog(
-        user_id=user_id,
-        document_id=doc.id,
-        timestamp=datetime.utcnow(),
-        ip_address=request.remote_addr
-    )
-    db.session.add(log_entry)
-    db.session.commit()
-
-    with open(pdf_path, 'rb') as f:
-        pdf_data = f.read()
-    response = make_response(pdf_data)
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'inline; filename=document_{doc_id}.pdf'
-    return response
+    # ✅ CloudinaryのURLにリダイレクト（ローカルパス不要！）
+    return redirect(doc.cloudinary_url)
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
 @login_required
