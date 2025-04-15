@@ -1617,6 +1617,7 @@ def document_view_pdf(doc_id):
     token = request.args.get("token")
     if not token:
         return jsonify({"error": "Token required"}), 401
+
     try:
         payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
         if payload.get("doc_id") != doc_id:
@@ -1626,23 +1627,7 @@ def document_view_pdf(doc_id):
 
     doc = Document.query.get_or_404(doc_id)
 
-    from cloudinary.utils import cloudinary_url
-    if "/upload/" in doc.cloudinary_url:
-        parts = doc.cloudinary_url.split("/upload/")
-        public_id = parts[1].split(".pdf")[0]
-    else:
-        return jsonify({"error": "Cloudinary URL形式不正"}), 500
-
-    view_url, _ = cloudinary_url(
-        public_id,
-        resource_type="raw",
-        type="upload",
-        secure=True,
-        flags="attachment:false"
-    )
-
-    return redirect(view_url)
-
+    return redirect(doc.cloudinary_url)
 
 
 
