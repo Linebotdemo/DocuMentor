@@ -11,7 +11,7 @@ from celery import Celery
 from tasks import transcribe_video_task
 from flask import Response, jsonify, g
 from flask import Response, request
-
+from your_jwt_module import get_jwt_user
 
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
@@ -1626,6 +1626,7 @@ def document_view_pdf(doc_id):
 
     # ✅ inline_proxy にリダイレクト（Content-Disposition: inline が効く）
     return redirect(f"/documents/{doc_id}/inline_proxy?token={token}")
+
 
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
