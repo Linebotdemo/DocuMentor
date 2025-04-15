@@ -1627,20 +1627,23 @@ def document_view_pdf(doc_id):
 
     doc = Document.query.get_or_404(doc_id)
 
-    # CloudinaryのPDFをダウンロードして中継
-    try:
-        response = requests.get(doc.cloudinary_url)
-        if response.status_code != 200:
-            return jsonify({"error": "CloudinaryからPDF取得失敗"}), 500
+    from cloudinary.utils import cloudinary_url
+    if "/upload/" in doc.cloudinary_url:
+        parts = doc.cloudinary_url.split("/upload/")
+        public_id = parts[1].split(".pdf")[0]
+    else:
+        return jsonify({"error": "Cloudinary URL形式不正"}), 500
 
-        pdf_bytes = response.content
-        resp = make_response(pdf_bytes)
-        resp.headers['Content-Type'] = 'application/pdf'
-        resp.headers['Content-Disposition'] = f'inline; filename="{doc.title}.pdf"'
-        return resp
-    except Exception as e:
-        print(f"[PDF Proxy Error] {e}")
-        return jsonify({"error": "PDF表示に失敗しました"}), 500
+    view_url, _ = cloudinary_url(
+        public_id,
+        resource_type="raw",
+        type="upload",
+        secure=True,
+        flags="attachment:false"
+    )
+
+    return redirect(view_url)
+
 
 
 
