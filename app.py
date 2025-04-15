@@ -1625,8 +1625,25 @@ def document_view_pdf(doc_id):
     except Exception as e:
         return jsonify({"error": f"Invalid token: {str(e)}"}), 401
 
-    # ✅ inline_proxy にリダイレクト（Content-Disposition: inline が効く）
-    return redirect(f"/documents/{doc_id}/inline_proxy?token={token}")
+    doc = Document.query.get_or_404(doc_id)
+
+    # ✅ Cloudinaryのview用URLを inline 指定で生成
+    from cloudinary.utils import cloudinary_url
+    if "/upload/" in doc.cloudinary_url:
+        parts = doc.cloudinary_url.split("/upload/")
+        public_id = parts[1].split(".pdf")[0]
+    else:
+        return jsonify({"error": "Cloudinary URL形式不正"}), 500
+
+    view_url, _ = cloudinary_url(
+        public_id,
+        resource_type="raw",
+        type="upload",
+        secure=True,
+        flags="attachment:false"  # これが inline 表示に必要
+    )
+
+    return redirect(view_url)
 
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
