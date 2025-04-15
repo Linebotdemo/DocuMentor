@@ -868,37 +868,40 @@ def inline_proxy(doc_id):
 
         doc = Document.query.get_or_404(doc_id)
 
-        # 認可チェック（LINEトークン or JWT）
+        # 認可チェック
         if token:
-            if not is_valid_temp_token(token, doc_id):  # トークン検証ロジックは実装済みのものを使用
+            if not is_valid_temp_token(token, doc_id):
                 return jsonify({"error": "無効または期限切れのトークンです"}), 403
         elif auth_header:
-            user = get_jwt_user(auth_header)  # JWTヘッダーからユーザーを復元
+            user = get_jwt_user(auth_header)
             if not user or (user.role != 'env' and user.company_id != doc.company_id):
                 return jsonify({"error": "権限がありません"}), 403
         else:
             return jsonify({"error": "Authorization header is missing"}), 401
 
-        # CloudinaryからPDFを取得（resource_type="raw"）
-        cloud_url = doc.cloudinary_url
-        response = requests.get(cloud_url, stream=True)
-        if response.status_code != 200:
-            return jsonify({"error": "CloudinaryからPDFを取得できませんでした"}), 500
+        # ✅ Cloudinary URLを直接開けない問題対策
+        # public_id 抽出 → cloudinary_url() で inline 指定して生成
+        from cloudinary.utils import cloudinary_url
+        if "/upload/" in doc.cloudinary_url:
+            parts = doc.cloudinary_url.split("/upload/")
+            public_id = parts[1].split(".pdf")[0]
+        else:
+            return jsonify({"error": "Cloudinary URL形式不正"}), 500
 
-        def generate():
-            for chunk in response.iter_content(chunk_size=8192):
-                yield chunk
-
-        return Response(
-            generate(),
-            mimetype="application/pdf",
-            headers={
-                "Content-Disposition": f'inline; filename="{doc.title}.pdf"'
-            }
+        preview_url, _ = cloudinary_url(
+            public_id,
+            resource_type="raw",
+            type="upload",
+            secure=True,
+            flags="attachment:false"  # ⚠️これで inline に
         )
+
+        return redirect(preview_url)
+
     except Exception as e:
         print(f"[ERROR] inline_proxy: {e}")
         return jsonify({"error": "PDF表示中にエラーが発生しました"}), 500
+
 
 def is_valid_temp_token(token, doc_id):
     try:
