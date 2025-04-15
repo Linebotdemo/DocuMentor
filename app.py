@@ -11,7 +11,6 @@ from celery import Celery
 from tasks import transcribe_video_task
 from flask import Response, jsonify, g
 from flask import Response, request
-from your_jwt_module import get_jwt_user
 from urllib.parse import quote
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
