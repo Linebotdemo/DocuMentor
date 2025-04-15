@@ -893,7 +893,6 @@ def inline_proxy(doc_id):
             resource_type="raw",
             type="upload",
             secure=True,
-            flags="attachment:false"  # ⚠️これで inline に
         )
 
         return redirect(preview_url)
