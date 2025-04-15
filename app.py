@@ -11,6 +11,8 @@ from celery import Celery
 from tasks import transcribe_video_task
 from flask import Response, jsonify, g
 from flask import Response, request
+from your_jwt_module import get_jwt_user
+
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -868,39 +870,37 @@ def inline_proxy(doc_id):
 
         doc = Document.query.get_or_404(doc_id)
 
-        # 認可チェック
+        # 認可チェック（LINEトークン or JWT）
         if token:
-            if not is_valid_temp_token(token, doc_id):
+            if not is_valid_temp_token(token, doc_id):  # トークン検証ロジックは実装済みのものを使用
                 return jsonify({"error": "無効または期限切れのトークンです"}), 403
         elif auth_header:
-            user = get_jwt_user(auth_header)
+            user = get_jwt_user(auth_header)  # JWTヘッダーからユーザーを復元
             if not user or (user.role != 'env' and user.company_id != doc.company_id):
                 return jsonify({"error": "権限がありません"}), 403
         else:
             return jsonify({"error": "Authorization header is missing"}), 401
 
-        # ✅ Cloudinary URLを直接開けない問題対策
-        # public_id 抽出 → cloudinary_url() で inline 指定して生成
-        from cloudinary.utils import cloudinary_url
-        if "/upload/" in doc.cloudinary_url:
-            parts = doc.cloudinary_url.split("/upload/")
-            public_id = parts[1].split(".pdf")[0]
-        else:
-            return jsonify({"error": "Cloudinary URL形式不正"}), 500
+        # CloudinaryからPDFを取得（resource_type="raw"）
+        cloud_url = doc.cloudinary_url
+        response = requests.get(cloud_url, stream=True)
+        if response.status_code != 200:
+            return jsonify({"error": "CloudinaryからPDFを取得できませんでした"}), 500
 
-        preview_url, _ = cloudinary_url(
-            public_id,
-            resource_type="raw",
-            type="upload",
-            secure=True,
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                yield chunk
+
+        return Response(
+            generate(),
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{doc.title}.pdf"'
+            }
         )
-
-        return redirect(preview_url)
-
     except Exception as e:
         print(f"[ERROR] inline_proxy: {e}")
         return jsonify({"error": "PDF表示中にエラーが発生しました"}), 500
-
 
 def is_valid_temp_token(token, doc_id):
     try:
@@ -1617,7 +1617,6 @@ def document_view_pdf(doc_id):
     token = request.args.get("token")
     if not token:
         return jsonify({"error": "Token required"}), 401
-
     try:
         payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
         if payload.get("doc_id") != doc_id:
@@ -1625,10 +1624,8 @@ def document_view_pdf(doc_id):
     except Exception as e:
         return jsonify({"error": f"Invalid token: {str(e)}"}), 401
 
-    doc = Document.query.get_or_404(doc_id)
-
-    return redirect(doc.cloudinary_url)
-
+    # ✅ inline_proxy にリダイレクト（Content-Disposition: inline が効く）
+    return redirect(f"/documents/{doc_id}/inline_proxy?token={token}")
 
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
