@@ -1622,10 +1622,9 @@ def document_view_pdf(doc_id):
     except Exception as e:
         return jsonify({"error": f"Invalid token: {str(e)}"}), 401
 
-    doc = Document.query.get_or_404(doc_id)
+    # ✅ inline_proxy にリダイレクト（Content-Disposition: inline が効く）
+    return redirect(f"/documents/{doc_id}/inline_proxy?token={token}")
 
-    # ✅ CloudinaryのURLにリダイレクト（ローカルパス不要！）
-    return redirect(doc.cloudinary_url)
 
 @app.route('/documents/<int:doc_id>/generate_view_link', methods=['POST'])
 @jwt_required
