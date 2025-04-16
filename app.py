@@ -1371,7 +1371,7 @@ def upload_document():
     try:
         result = cloudinary.uploader.upload(
             file,
-            resource_type="raw",
+            resource_type="auto",
             folder="documentor/pdfs",
             use_filename=True,
             unique_filename=True
@@ -1510,7 +1510,7 @@ def publish_document():
         with open(temp_pdf_path, "rb") as f:
             pdf_url = upload_to_cloudinary(
                 f,
-                resource_type="raw",
+                resource_type="auto",
                 folder="documentor/pdfs"
             )
 
@@ -1662,7 +1662,7 @@ def generate_view_link(doc_id):
     from cloudinary.utils import cloudinary_url
     preview_url, _ = cloudinary_url(
         public_id,
-        resource_type="raw",
+        resource_type="auto",
         type="upload",
         secure=True,
         inline=True
