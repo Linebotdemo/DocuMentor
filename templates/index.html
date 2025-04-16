@@ -880,7 +880,7 @@ window.openDocInNewTab = function(docId) {
       // ----------------------------------------------------------------------
       // 動画アップロード
       // ----------------------------------------------------------------------
-      function pollVideoStatus(videoId, interval = 5000, maxAttempts = 120) {
+      function pollVideoStatus(videoId, interval = 5000, maxAttempts = 800) {
         let attempts = 0;
         const poller = setInterval(function () {
           attempts++;
