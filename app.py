@@ -883,6 +883,14 @@ def inline_proxy(doc_id):
         # Cloudinary PDFのストリーミング取得
         cloud_url = doc.cloudinary_url
         response = requests.get(cloud_url, stream=True)
+        print(f"[DEBUG] Cloudinary URL: {cloud_url}")
+        print(f"[DEBUG] response.status_code = {response.status_code}")
+        print(f"[DEBUG] response.headers = {response.headers}")
+
+        if "application/pdf" not in response.headers.get("Content-Type", ""):
+            print("[WARN] Content-TypeがPDFではありません")
+            return jsonify({"error": "PDFではありません"}), 500
+
         if response.status_code != 200:
             return jsonify({"error": "PDF取得失敗"}), 500
 
