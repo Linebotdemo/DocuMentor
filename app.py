@@ -1152,6 +1152,8 @@ def upload_step_image(video_id, step_id):
     return jsonify({"message": "画像をアップロードしました", "cloudinary_url": image_url})
 @app.route("/videos/whisper_callback", methods=["POST"])
 def whisper_callback():
+    print("[DEBUG] callback受信 summary_text:", request.json.get("summary_text", "")[:300])
+    print("[DEBUG] callback受信 quiz_text:", request.json.get("quiz_text", "")[:300])
     try:
         data = request.get_json()
         video_id = data.get("video_id")
