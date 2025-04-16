@@ -374,7 +374,7 @@ def generate_temp_pdf_token(doc_id):
     token = jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm="HS256")
     return token
 
-def upload_to_cloudinary(file_stream, resource_type="raw", folder="documentor", public_id_prefix=None):
+def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor", public_id_prefix=None):
     try:
         if not public_id_prefix:
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
