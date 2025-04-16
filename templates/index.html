@@ -1043,9 +1043,10 @@ window.openDocInNewTab = function(docId) {
         const reader = new FileReader();
         reader.onload = function(evt){
           const base64 = evt.target.result;
+          const fileName = file.name.replace(/\.[^/.]+$/, "");
           const textarea = document.getElementById("generated-content");
           const currentVal = textarea.value;
-          const imgTag = `\n<img src="${base64}" alt="EmbeddedImage">\n`;
+          const imgTag = `\n<img src="${base64}" alt="${fileName}" style="max-width:300px;">\n`;
           const startPos = textarea.selectionStart;
           const endPos = textarea.selectionEnd;
           const newVal = currentVal.substring(0, startPos)
