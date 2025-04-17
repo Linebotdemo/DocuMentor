@@ -401,7 +401,8 @@ PDF_TEMPLATE = """
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: "Noto Sans JP", sans-serif; line-height: 1.4; margin: 10mm; }
+    /* 日本語フォントを明示  ―― 無い場合はデフォルト Sans にフォールバック */
+    body { font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif; line-height: 1.4; margin: 10mm; }
     h1, h2, h3 { margin: .4em 0; }
     pre, code { font-family: "Cascadia Code", monospace; }
     .md  { white-space: pre-wrap; }
@@ -439,6 +440,7 @@ def markdown_to_pdf(md_text: str, title: str, out_path: str) -> None:
         configuration=pdfkit_config,
         options={
             "encoding": "UTF-8",
+            "enable-local-file-access": None,
             "page-size": "A4",
             "margin-top": "10mm",
             "margin-bottom": "10mm",
