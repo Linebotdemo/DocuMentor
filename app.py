@@ -375,7 +375,7 @@ def generate_temp_pdf_token(doc_id):
     token = jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm="HS256")
     return token
 
-def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor", public_id_prefix=None):
+def upload_to_cloudinary(file_stream, resource_type="raw", folder="documentor", public_id_prefix=None):
     try:
         if not public_id_prefix:
             public_id_prefix = datetime.utcnow().strftime("%Y%m%d%H%M%S")
@@ -1088,7 +1088,7 @@ def upload_video():
                 try:
                     uploaded = cloudinary.uploader.upload(
                         temp_path,
-                        resource_type="auto",
+                        resource_type="raw",
                         folder="documentor/captures",
                         use_filename=True,
                         unique_filename=True
@@ -1427,11 +1427,11 @@ def upload_document():
     if not title or not category or not file:
         return jsonify({"error": "title, category and document_file are required"}), 400
 
-    # PDFなので resource_type="auto" を指定
+    # PDFなので resource_type="raw" を指定
     try:
         result = cloudinary.uploader.upload(
             file,
-            resource_type="auto",
+            resource_type="raw",
             folder="documentor/pdfs",
             use_filename=True,
             unique_filename=True
@@ -1572,7 +1572,7 @@ def publish_document():
         with open(temp_pdf_path, "rb") as f:
             pdf_url = upload_to_cloudinary(
                 f,
-                resource_type="auto",
+                resource_type="raw",
                 folder="documentor/pdfs"
             )
 
@@ -1724,7 +1724,7 @@ def generate_view_link(doc_id):
     from cloudinary.utils import cloudinary_url
     preview_url, _ = cloudinary_url(
         public_id,
-        resource_type="auto",
+        resource_type="raw",
         type="upload",
         secure=True,
         inline=True
