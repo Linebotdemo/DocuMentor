@@ -12,6 +12,7 @@ from tasks import transcribe_video_task
 from flask import Response, jsonify, g
 from flask import Response, request
 from urllib.parse import quote
+import markdown
 
 from flask import Flask, request, jsonify, make_response, render_template, abort, g, redirect, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -392,6 +393,61 @@ def upload_to_cloudinary(file_stream, resource_type="auto", folder="documentor",
     except Exception as e:
         print(f"Cloudinary upload error: {e}")
         return None
+
+# ==================== Markdown → PDF ユーティリティ =====================
+PDF_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: "Noto Sans JP", sans-serif; line-height: 1.4; margin: 10mm; }
+    h1, h2, h3 { margin: .4em 0; }
+    pre, code { font-family: "Cascadia Code", monospace; }
+    .md  { white-space: pre-wrap; }
+    ul, ol { margin-left: 1.2em; }
+    li { margin: .2em 0; }
+  </style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <div class="md">
+    {{ body_html|safe }}
+  </div>
+</body>
+</html>
+"""
+
+def markdown_to_pdf(md_text: str, title: str, out_path: str) -> None:
+    """
+    Markdown 文字列を HTML に変換し、pdfkit で PDF を生成する。
+    """
+    # 1) Markdown -> HTML
+    body_html = markdown.markdown(
+        md_text,
+        extensions=["extra", "sane_lists", "nl2br"]
+    )
+
+    # 2) Jinja2 テンプレートに埋め込み
+    from jinja2 import Template
+    html = Template(PDF_TEMPLATE).render(title=title, body_html=body_html)
+
+    # 3) PDF 生成
+    pdfkit.from_string(
+        html,
+        out_path,
+        configuration=pdfkit_config,
+        options={
+            "encoding": "UTF-8",
+            "page-size": "A4",
+            "margin-top": "10mm",
+            "margin-bottom": "10mm",
+            "margin-left": "10mm",
+            "margin-right": "10mm",
+        },
+    )
+# =======================================================================
+
 
 ###############################################################################
 # Whisper要約＋クイズ生成 (Cloudinaryファイルを一時DL→解析)
@@ -1499,13 +1555,15 @@ def publish_document():
             </body>
         </html>
         """
-        pdf_data = pdfkit.from_string(html, False, configuration=pdfkit_config)
 
         # 一時ファイルに保存
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-        temp_pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{secure_filename(title)}.pdf")
-        with open(temp_pdf_path, "wb") as f:
-            f.write(pdf_data)
+        temp_pdf_path = os.path.join(
+            app.config['UPLOAD_FOLDER'],
+            f"{timestamp}_{secure_filename(title)}.pdf"
+        )
+        markdown_to_pdf(content, title, temp_pdf_path)
+
 
         # Cloudinaryへアップロード
         pdf_url = None
