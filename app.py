@@ -945,9 +945,12 @@ def inline_proxy(doc_id):
         print(f"[DEBUG] response.status_code = {response.status_code}")
         print(f"[DEBUG] response.headers = {response.headers}")
 
-        if "application/pdf" not in response.headers.get("Content-Type", ""):
-            print("[WARN] Content-TypeがPDFではありません")
-            return jsonify({"error": "PDFではありません"}), 500
+
+
+        content_type = response.headers.get("Content-Type", "")
+        if "application/pdf" not in content_type and "application/octet-stream" not in content_type:
+            print(f"[WARN] 想定外のContent-Type: {content_type}")
+            return jsonify({"error": f"不明なContent-Type: {content_type}"}), 500
 
         if response.status_code != 200:
             return jsonify({"error": "PDF取得失敗"}), 500
